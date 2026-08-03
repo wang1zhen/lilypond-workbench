@@ -1,0 +1,22 @@
+[project]
+name = "lilypond-workbench"
+version = "0.1.0"
+description = "Codex skill and deterministic tools for LilyPond score workflows"
+requires-python = ">=3.11"
+dependencies = [
+    "music21>=10.5.0",
+    "python-ly>=0.9.10",
+    "pyyaml>=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+markers = [
+    "integration: requires system LilyPond or LaTeX tools",
+]
+testpaths = ["tests"]

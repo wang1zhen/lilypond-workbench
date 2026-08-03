@@ -1,0 +1,38 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# LilyPond and LaTeX generated output
+*.pdf
+*.midi
+*.mid
+*.ps
+*.eps
+*.log
+*.aux
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.bcf
+*.run.xml
+*-systems.tex
+*-systems.texi
+
+# Local editor and operating-system files
+.DS_Store
+*.swp
+*.swo

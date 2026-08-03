@@ -1,0 +1,23 @@
+\documentclass[UTF8]{ctexart}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{hyperref}
+
+\title{LilyPond Workbench 文档}
+\author{作者}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+这里可以编写中文正文，并插入 LilyPond 乐谱。
+
+\begin{lilypond}[quote,fragment,staffsize=18]
+\relative c' {
+  \key c \major
+  \time 4/4
+  c4 d e f | g1 |
+}
+\end{lilypond}
+
+% 也可以引用外部文件：\lilypondfile{score.ly}
+\end{document}

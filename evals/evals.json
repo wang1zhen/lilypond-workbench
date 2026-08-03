@@ -1,0 +1,35 @@
+{
+  "skill_name": "lilypond-workbench",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "创建一份两页以内的小提琴独奏 LilyPond 乐谱并输出 PDF。",
+      "expected": ["valid LilyPond 2.24.4 source", "playable violin range", "non-empty PDF"]
+    },
+    {
+      "id": 2,
+      "prompt": "给这段旋律添加上下两套不同指法、上下弓、连音线和延音线。",
+      "expected": ["directed upper and lower fingerings", "semantic bow/slur/tie syntax", "successful compile"]
+    },
+    {
+      "id": 3,
+      "prompt": "分析 score.ly 的编译错误和小节时值问题并修复。",
+      "expected": ["structured diagnostics", "minimal source edits", "regenerated PDF"]
+    },
+    {
+      "id": 4,
+      "prompt": "从弦乐总谱生成独立分谱并批量输出 PDF。",
+      "expected": ["reviewed schema v1 manifest", "shared source of truth", "one PDF per part"]
+    },
+    {
+      "id": 5,
+      "prompt": "分析这份 MusicXML 的和声，添加和弦名和罗马数字。",
+      "expected": ["local key analysis", "harmony.ily", "JSON confidence report", "low-confidence omissions reviewed"]
+    },
+    {
+      "id": 6,
+      "prompt": "把 MIDI 和 ABC 转成整洁的 LilyPond，并制作一份含中文说明的 LaTeX PDF。",
+      "expected": ["converted and semantically reviewed scores", "LuaLaTeX lilypond-book document", "non-empty PDF"]
+    }
+  ]
+}

@@ -40,6 +40,35 @@ and parts.
 - Treat harmonics, sul ponticello, col legno, and other techniques as semantic
   notation that may also need explanatory text.
 
+### Violin, viola, and cello clefs
+
+Analyze written pitch with middle C named C4. Prefer a stable clef over reducing
+the ledger lines of one or two notes. Change only at a bar line, a rest of at
+least one beat, an explicit phrase boundary, or a rehearsal boundary. Require
+the candidate register to last at least one full measure and contain at least
+three pitched attacks, unless it lasts two full measures. Ignore grace and cue
+music when selecting the main clef.
+
+- Keep violin in treble clef. Preserve a nonstandard explicit clef but report
+  it for review.
+- Keep viola in alto clef. Enter treble when at least 70 percent of the
+  duration-weighted passage is C5 or higher; return when at least 70 percent is
+  B4 or lower.
+- Keep cello in bass clef. Enter tenor when at least 70 percent is D4 or higher
+  and return when at least 70 percent is C4 or lower. From tenor, enter treble
+  when at least 70 percent is A4 or higher and return when at least 70 percent
+  is G4 or lower. A sufficiently high passage may move directly from bass to
+  treble.
+
+Require an upward change to reduce average ledger-line cost by at least one.
+Allow a return toward the home clef when it adds no more than half a ledger
+line on average. These separate entry and return boundaries provide hysteresis
+and prevent bar-by-bar flip-flopping. Interpret every cello treble clef at
+modern written pitch; do not apply the historical octave-lower convention.
+
+Use `analyze-clefs` to create a source-located JSON report. Keep the default
+part policy at `suggest`; enable `auto` only after reviewing the report.
+
 ## Piano register and voicing
 
 Avoid placing accompaniment block chords in the same register as a solo line.

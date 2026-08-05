@@ -30,6 +30,11 @@
       "id": 6,
       "prompt": "把 MIDI 和 ABC 转成整洁的 LilyPond，并制作一份含中文说明的 LaTeX PDF。",
       "expected": ["converted and semantically reviewed scores", "LuaLaTeX lilypond-book document", "non-empty PDF"]
+    },
+    {
+      "id": 7,
+      "prompt": "分析弦乐总谱中 violin、viola 和 cello 的谱号使用，保留总谱源文件，为分谱生成稳定且不频繁切换的自动谱号轨。",
+      "expected": ["semantic written-pitch index", "source-located clef reports", "violin remains in treble", "viola alto/treble hysteresis", "cello bass/tenor/treble hysteresis", "successfully compiled parts"]
     }
   ]
 }

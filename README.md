@@ -22,7 +22,11 @@ exclusively by [uv](https://docs.astral.sh/uv/).
 - Diagnose LilyPond compilation failures and measure-duration problems.
 - Import MusicXML, compressed MusicXML, MIDI, and ABC, then normalize the
   generated LilyPond source for further review.
-- Extract independent parts from a shared full-score source.
+- Extract independent parts from a shared full-score source using a versioned
+  manifest.
+- Semantically index written pitches across relative music, includes,
+  transposition, tuplets, repeats, and simultaneous voices; recommend stable
+  violin, viola, and cello clef changes and optionally apply them to parts.
 - Infer chord symbols, local keys, inversions, and Roman numerals, with a JSON
   confidence report for human review.
 - Render one score or batch-render a directory to PDF, PNG, SVG, or PostScript.
@@ -130,6 +134,18 @@ uv run python scripts/workbench.py parts-manifest full-score.ly \
 uv run python scripts/workbench.py extract-parts parts.yaml --compile
 ```
 
+Analyze a string part's clefs without modifying it:
+
+```sh
+uv run python scripts/workbench.py analyze-clefs full-score.ly \
+  --instrument cello --variable celloMusic \
+  --output cello.clefs.json
+```
+
+New parts manifests use schema v2. Leave `clef.policy` at `suggest` to produce
+a source-located report, or set it to `auto` to add a generated clef track to
+that part. Schema v1 remains readable and preserves its previous behavior.
+
 Analyze harmony:
 
 ```sh
@@ -162,6 +178,7 @@ will consume the result.
 | `parts-manifest` | Discover part candidates and create a reviewable manifest |
 | `extract-parts` | Generate part wrappers from a reviewed manifest |
 | `analyze-harmony` | Produce chord/Roman-numeral includes and an analysis report |
+| `analyze-clefs` | Recommend violin, viola, or cello clef changes from a semantic index |
 | `build-document` | Run `lilypond-book` and LuaLaTeX |
 
 Run `uv run python scripts/workbench.py COMMAND --help` for all options.
@@ -232,6 +249,8 @@ LaTeX document generation.
   LilyPond include and retained in JSON for review.
 - Part extraction deliberately stops when the shared source cannot be isolated
   safely; review the manifest before compiling parts.
+- Automatic clef tracks never edit the score source. Existing explicit clefs
+  are preserved, and reports should be reviewed before publication.
 - LilyPond input can contain Guile/Scheme and must be treated as executable
   code. Compile untrusted sources only in an appropriately isolated environment.
 - `--force` and `--in-place` overwrite files. Confirm the intended target

@@ -17,7 +17,9 @@ LilyPond Workbench 是一个面向 Codex 的 skill，同时也是一套确定性
 - 添加歌词、和弦标记、指法、上下两套不同指法、弓法、连音线、乐句连线和延音线。
 - 诊断 LilyPond 编译错误和小节时值问题。
 - 导入 MusicXML、压缩 MusicXML、MIDI 和 ABC，并整理转换后的 LilyPond 源码。
-- 从共享的总谱源文件生成独立分谱。
+- 通过版本化清单从共享的总谱源文件生成独立分谱。
+- 对相对音高、include、移调、连音组、反复和多声部建立书面音高语义索引，为
+  violin、viola 和 cello 推荐稳定的谱号切换，并可选择仅在生成分谱中应用。
 - 推断和弦名称、局部调性、转位和罗马数字，并生成供人工复核的 JSON 置信度报告。
 - 将单份或多份乐谱渲染为 PDF、PNG、SVG 或 PostScript。
 - 通过 `lilypond-book` 构建包含乐谱的 LuaLaTeX 文档。
@@ -118,6 +120,18 @@ uv run python scripts/workbench.py parts-manifest full-score.ly \
 uv run python scripts/workbench.py extract-parts parts.yaml --compile
 ```
 
+在不修改源文件的前提下分析弦乐分谱谱号：
+
+```sh
+uv run python scripts/workbench.py analyze-clefs full-score.ly \
+  --instrument cello --variable celloMusic \
+  --output cello.clefs.json
+```
+
+新生成的分谱清单使用 schema v2。保持 `clef.policy: suggest` 只生成带源码定位的
+报告；改为 `auto` 才会给该分谱添加独立谱号轨。schema v1 仍可读取，并保持原有
+行为。
+
 分析和声：
 
 ```sh
@@ -149,6 +163,7 @@ uv run python scripts/workbench.py build-document article.lytex \
 | `parts-manifest` | 发现分谱候选并生成可审阅的清单 |
 | `extract-parts` | 根据审阅后的清单生成分谱 wrapper |
 | `analyze-harmony` | 生成和弦、罗马数字 include 及分析报告 |
+| `analyze-clefs` | 从语义索引推荐 violin、viola 或 cello 的谱号切换 |
 | `build-document` | 运行 `lilypond-book` 和 LuaLaTeX |
 
 可通过 `uv run python scripts/workbench.py COMMAND --help` 查看完整参数。
@@ -215,6 +230,7 @@ uv run pytest
 - 和声分析面向十二平均律下的传统功能和声、流行与爵士语汇。低置信度结果不会
   写入 LilyPond include，但会保留在 JSON 中供复核。
 - 当共享总谱无法安全拆分时，分谱工具会主动停止；编译前必须检查 manifest。
+- 自动谱号轨不会修改总谱源文件；已有显式谱号会被保留，出版前必须复核分析报告。
 - LilyPond 文件可以嵌入 Guile/Scheme，应当把输入视作可执行代码。不可信乐谱
   只能在适当隔离的环境中编译。
 - `--force` 和 `--in-place` 会覆盖文件，使用前必须确认目标路径。

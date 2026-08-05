@@ -5,6 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from .clefs import analyze_clefs
 from .common import Diagnostic, Result, SKILL_ROOT, WorkbenchError, ensure_input, prepare_output, print_result
 from .diagnostics import parse_lilypond_log
 from .documents import build_document
@@ -113,6 +114,15 @@ def build_parser() -> argparse.ArgumentParser:
     harmony.add_argument("--force", action="store_true")
     harmony.add_argument("--timeout", type=int, default=120)
     _add_json(harmony)
+
+    clefs = sub.add_parser("analyze-clefs", help="Recommend clef changes for a string part")
+    clefs.add_argument("input", type=Path)
+    clefs.add_argument("--instrument", choices=["violin", "viola", "cello"], required=True)
+    clefs.add_argument("--variable", required=True, help="Music variable to analyze")
+    clefs.add_argument("--initial-clef", choices=["treble", "alto", "tenor", "bass"])
+    clefs.add_argument("--output", type=Path, required=True)
+    clefs.add_argument("--force", action="store_true")
+    _add_json(clefs)
 
     document = sub.add_parser("build-document", help="Build a LilyPond-enabled LaTeX document")
     document.add_argument("input", type=Path)
@@ -224,6 +234,15 @@ def dispatch(args: argparse.Namespace) -> Result:
             confidence_threshold=args.confidence_threshold,
             force=args.force,
             timeout=args.timeout,
+        )
+    if args.command == "analyze-clefs":
+        return analyze_clefs(
+            ensure_input(args.input, {".ly", ".ily"}),
+            variable=args.variable,
+            instrument=args.instrument,
+            output_path=args.output,
+            initial_clef=args.initial_clef,
+            force=args.force,
         )
     if args.command == "build-document":
         return build_document(ensure_input(args.input, {".lytex", ".tex"}), output_dir=args.output_dir, timeout=args.timeout)

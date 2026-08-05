@@ -1,6 +1,6 @@
 ---
 name: lilypond-workbench
-description: Create, edit, debug, analyze, import, clean, extract parts from, compile, batch-render, and publish LilyPond 2.24 scores and LilyPond-enabled LaTeX documents. Use whenever Codex works with .ly/.ily files, music engraving, natural-language score creation, compilation errors, lyrics, chord symbols or harmonic analysis, fingerings, bowings, slurs, ties, MusicXML/MIDI/ABC conversion, score-to-part extraction, PDF output, measure-duration validation, LilyPond logs, or .lytex documents containing music.
+description: Create, edit, debug, semantically analyze, import, clean, extract parts from, compile, batch-render, and publish LilyPond 2.24 scores and LilyPond-enabled LaTeX documents. Use whenever Codex works with .ly/.ily files, music engraving, natural-language score creation, compilation errors, lyrics, chord symbols or harmonic analysis, instrument ranges or clef changes, fingerings, bowings, slurs, ties, MusicXML/MIDI/ABC conversion, score-to-part extraction, PDF output, measure-duration validation, LilyPond logs, or .lytex documents containing music.
 ---
 
 # LilyPond Workbench
@@ -24,7 +24,7 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 ## Task routing
 
 - Create or edit scores, add lyrics/chords, transpose, or repair engraving: read [references/workflows.md](references/workflows.md).
-- Choose playable registers, clefs, transpositions, or idiomatic instrumental writing: read [references/instruments.md](references/instruments.md).
+- Choose playable registers, clefs, transpositions, or idiomatic instrumental writing: read [references/instruments.md](references/instruments.md), then use `analyze-clefs` for violin, viola, or cello parts.
 - Add one or more fingering systems, bowings, slurs, phrasing slurs, or ties: read [references/annotations.md](references/annotations.md).
 - Apply context settings, grob overrides, custom engravers, or Scheme: read [references/engraving.md](references/engraving.md).
 - Diagnose compiler errors or measure lengths: read [references/diagnostics.md](references/diagnostics.md), then use `validate` or `parse-log`.
@@ -45,6 +45,7 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 - `parts-manifest SOURCE --output parts.yaml`: discover part candidates.
 - `extract-parts parts.yaml --compile`: generate and render wrappers from shared definitions.
 - `analyze-harmony INPUT --output harmony.ily`: generate chord names, Roman numerals, and JSON analysis.
+- `analyze-clefs INPUT --instrument INSTRUMENT --variable MUSIC --output clefs.json`: index written pitches and recommend stable string-part clef changes.
 - `build-document FILE.lytex --output-dir build/document`: run lilypond-book and LuaLaTeX.
 
 Prefer `--json` when another tool or agent step will consume results. Never use `--force` or `--in-place` without confirming the target is the intended file.

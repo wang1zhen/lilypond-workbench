@@ -7,8 +7,10 @@ from typing import Any
 
 import yaml
 
+from .clefs import ClefAnalysis, analyze_clef_index, clef_track_name, render_clef_track
 from .common import Diagnostic, Result, WorkbenchError, atomic_write, prepare_output
 from .rendering import render_file
+from .semantic import SemanticIndex, build_semantic_index
 from .syntax import extract_music_variables, masked_source, rewrite_relative_includes, sanitize_definitions
 
 
@@ -26,11 +28,22 @@ def _part_id(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "part"
 
 
-def _guess_clef(name: str) -> str:
+def _guess_instrument(name: str) -> str | None:
     lower = name.lower()
-    if any(item in lower for item in ("viola", "alto")):
+    if "violin" in lower:
+        return "violin"
+    if "viola" in lower:
+        return "viola"
+    if "cello" in lower or "violoncello" in lower:
+        return "cello"
+    return None
+
+
+def _guess_clef(name: str, instrument: str | None = None) -> str:
+    lower = name.lower()
+    if instrument == "viola" or "alto" in lower:
         return "alto"
-    if any(item in lower for item in ("cello", "bass", "bassoon", "tuba", "trombone")):
+    if instrument == "cello" or any(item in lower for item in ("bass", "bassoon", "tuba", "trombone")):
         return "bass"
     if "drum" in lower or "percussion" in lower:
         return "percussion"
@@ -61,12 +74,17 @@ def build_manifest(source: Path) -> tuple[dict[str, Any], list[Diagnostic]]:
             continue
         mapping = mappings.get(variable.name, {})
         name = mapping.get("name") or re.sub(r"(?<!^)([A-Z])", r" \1", re.sub(r"Music$", "", variable.name)).title()
+        instrument = _guess_instrument(name)
         item = {
             "id": _part_id(variable.name),
             "name": name,
             "variable": variable.name,
             "staff_type": mapping.get("staff_type", "Staff"),
-            "clef": _guess_clef(name),
+            "instrument": instrument,
+            "clef": {
+                "initial": _guess_clef(name, instrument),
+                "policy": "suggest" if instrument in {"violin", "viola", "cello"} else "preserve",
+            },
         }
         if not mapping:
             item["needs_review"] = True
@@ -81,7 +99,7 @@ def build_manifest(source: Path) -> tuple[dict[str, Any], list[Diagnostic]]:
             )
         parts.append(item)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": source.name,
         "source_mode": "strip-score-blocks",
         "output_dir": "build/parts",
@@ -101,15 +119,79 @@ def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _wrapper(shared: Path, part: dict[str, Any]) -> str:
+def _clef_config(part: dict[str, Any]) -> dict[str, str]:
+    raw = part.get("clef")
+    if isinstance(raw, str):
+        return {"initial": raw, "policy": "preserve"}
+    if not isinstance(raw, dict):
+        return {"initial": _guess_clef(str(part.get("name", "")), part.get("instrument")), "policy": "preserve"}
+    return {
+        "initial": str(raw.get("initial") or _guess_clef(str(part.get("name", "")), part.get("instrument"))),
+        "policy": str(raw.get("policy", "preserve")),
+    }
+
+
+def _normalize_manifest(manifest: Any) -> dict[str, Any]:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") not in {1, 2}:
+        raise WorkbenchError("Parts manifest must use schema_version: 1 or 2", "MANIFEST_SCHEMA", exit_code=2)
+    normalized = dict(manifest)
+    parts = manifest.get("parts")
+    if not isinstance(parts, list):
+        raise WorkbenchError("Parts manifest must contain a parts list", "MANIFEST_SCHEMA", exit_code=2)
+    normalized_parts: list[dict[str, Any]] = []
+    for raw_part in parts:
+        if not isinstance(raw_part, dict) or not all(key in raw_part for key in ("id", "name", "variable")):
+            raise WorkbenchError("Each part requires id, name, and variable", "MANIFEST_SCHEMA", exit_code=2)
+        part = dict(raw_part)
+        instrument = part.get("instrument") or _guess_instrument(str(part["name"]))
+        part["instrument"] = instrument
+        if manifest["schema_version"] == 1:
+            part["clef"] = {"initial": str(part.get("clef") or _guess_clef(str(part["name"]), instrument)), "policy": "preserve"}
+        else:
+            config = _clef_config(part)
+            if config["policy"] not in {"preserve", "suggest", "auto"}:
+                raise WorkbenchError(
+                    f"Part {part['id']} has invalid clef policy: {config['policy']}",
+                    "MANIFEST_SCHEMA",
+                    exit_code=2,
+                )
+            if config["policy"] != "preserve" and instrument not in {"violin", "viola", "cello"}:
+                raise WorkbenchError(
+                    f"Part {part['id']} requires instrument violin, viola, or cello for clef policy {config['policy']}",
+                    "MANIFEST_SCHEMA",
+                    exit_code=2,
+                )
+            part["clef"] = config
+        normalized_parts.append(part)
+    normalized["parts"] = normalized_parts
+    normalized["schema_version"] = 2
+    return normalized
+
+
+def _wrapper(
+    shared: Path,
+    part: dict[str, Any],
+    *,
+    clef_track: str | None = None,
+    clef_track_variable: str | None = None,
+) -> str:
     transpose = part.get("transpose") or {}
     music = f"\\{part['variable']}"
     if transpose:
         music = f"\\transpose {transpose['from']} {transpose['to']} {{ {music} }}"
+    if part.get("tags"):
+        tags = " ".join(part["tags"])
+        music = f"\\keepWithTag #'({tags}) {{ {music} }}"
+    if clef_track_variable:
+        music = f"<< {{ {music} }} {{ \\{clef_track_variable} }} >>"
     lines = [
         '\\version "2.24.4"',
         f'\\include "{shared.as_posix()}"',
         "",
+    ]
+    if clef_track:
+        lines.extend([clef_track.rstrip(), ""])
+    lines.extend([
         "\\book {",
         f'  \\bookOutputName "{_escape(part.get("output_name", part["id"]))}"',
         f'  \\header {{ instrument = "{_escape(part["name"])}" }}',
@@ -118,12 +200,10 @@ def _wrapper(shared: Path, part: dict[str, Any]) -> str:
         f'      instrumentName = "{_escape(part["name"])}"',
         f'      shortInstrumentName = "{_escape(part.get("short_name", part["name"]))}"',
         "    } {",
-    ]
-    if part.get("clef"):
-        lines.append(f"      \\clef {part['clef']}")
-    if part.get("tags"):
-        tags = " ".join(part["tags"])
-        music = f"\\keepWithTag #'({tags}) {{ {music} }}"
+    ])
+    config = _clef_config(part)
+    if not clef_track_variable and config["initial"]:
+        lines.append(f"      \\clef {config['initial']}")
     lines.extend([f"      {music}", "    }", "    \\layout { }", "    \\midi { }", "  }", "}", ""])
     return "\n".join(lines)
 
@@ -137,9 +217,9 @@ def extract_parts(
     timeout: int = 60,
 ) -> Result:
     manifest_file = manifest_path.resolve()
-    manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
-        raise WorkbenchError("Parts manifest must use schema_version: 1", "MANIFEST_SCHEMA", exit_code=2)
+    raw_manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
+    original_schema = raw_manifest.get("schema_version") if isinstance(raw_manifest, dict) else None
+    manifest = _normalize_manifest(raw_manifest)
     source = (manifest_file.parent / manifest["source"]).resolve()
     if not source.is_file():
         raise WorkbenchError(f"Manifest source not found: {source}", "INPUT_NOT_FOUND", exit_code=2)
@@ -157,8 +237,13 @@ def extract_parts(
         )
     shared = destination / "_shared.ily"
     wrappers = [destination / f"{part['id']}.ly" for part in manifest.get("parts", [])]
+    reports = [
+        destination / f"{part['id']}.clefs.json"
+        for part in manifest.get("parts", [])
+        if _clef_config(part)["policy"] in {"suggest", "auto"}
+    ]
     if not force:
-        existing = [path for path in [shared, *wrappers] if path.exists()]
+        existing = [path for path in [shared, *wrappers, *reports] if path.exists()]
         if existing:
             raise WorkbenchError(
                 f"Generated part output already exists: {existing[0]}; pass --force to replace all generated sources",
@@ -172,11 +257,41 @@ def extract_parts(
     for part, wrapper in zip(manifest.get("parts", []), wrappers, strict=True):
         if part.get("needs_review"):
             diagnostics.append(Diagnostic("warning", "PART_MAPPING_REVIEW", f"Part {part['id']} is marked needs_review"))
-        atomic_write(wrapper, _wrapper(shared, part), force=force)
+        config = _clef_config(part)
+        analysis: ClefAnalysis | None = None
+        semantic_index: SemanticIndex | None = None
+        track_text: str | None = None
+        track_variable: str | None = None
+        if config["policy"] in {"suggest", "auto"}:
+            semantic_index = build_semantic_index(source, str(part["variable"]))
+            analysis = analyze_clef_index(
+                semantic_index,
+                str(part["instrument"]),
+                initial_clef=config["initial"],
+            )
+            diagnostics.extend(analysis.diagnostics)
+            report = destination / f"{part['id']}.clefs.json"
+            atomic_write(report, json.dumps(analysis.to_dict(semantic_index), ensure_ascii=False, indent=2) + "\n", force=force)
+            artifacts.append(str(report))
+            if config["policy"] == "auto":
+                track_variable = clef_track_name(str(part["id"]))
+                track_text = render_clef_track(track_variable, analysis)
+        atomic_write(
+            wrapper,
+            _wrapper(shared, part, clef_track=track_text, clef_track_variable=track_variable),
+            force=force,
+        )
         artifacts.append(str(wrapper))
         if compile_parts:
             rendered = render_file(wrapper, output_dir=destination, timeout=timeout)
             ok = ok and rendered.ok
             artifacts.extend(rendered.artifacts)
             diagnostics.extend(rendered.diagnostics)
-    return Result(ok, "extract-parts", [str(manifest_file), str(source)], sorted(set(artifacts)), diagnostics, {"parts": len(manifest.get("parts", []))})
+    return Result(
+        ok,
+        "extract-parts",
+        [str(manifest_file), str(source)],
+        sorted(set(artifacts)),
+        diagnostics,
+        {"parts": len(manifest.get("parts", [])), "manifest_schema": original_schema},
+    )

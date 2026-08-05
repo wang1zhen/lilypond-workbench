@@ -70,6 +70,46 @@ def test_part_extraction_compiles(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
+def test_automatic_cello_clef_track_compiles(tmp_path: Path) -> None:
+    source = tmp_path / "score.ly"
+    source.write_text(
+        r'''\version "2.24.4"
+celloMusic = \absolute {
+  \time 4/4 \clef bass
+  c4 d e f |
+  d'4 e' f' g' |
+  a'4 b' c'' d'' |
+  c4 d e f |
+}
+\score { \new Staff \with { instrumentName = "Cello" } \celloMusic \layout { } }
+''',
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "parts.yaml"
+    manifest.write_text(
+        """schema_version: 2
+source: score.ly
+parts:
+  - id: cello
+    name: Cello
+    instrument: cello
+    variable: celloMusic
+    staff_type: Staff
+    clef: {initial: bass, policy: auto}
+""",
+        encoding="utf-8",
+    )
+
+    extracted = extract_parts(manifest, output_dir=tmp_path / "parts", compile_parts=True)
+
+    assert extracted.ok
+    assert (tmp_path / "parts" / "cello.pdf").is_file()
+    wrapper = (tmp_path / "parts" / "cello.ly").read_text(encoding="utf-8")
+    assert "\\clef tenor" in wrapper
+    assert "\\clef treble" in wrapper
+
+
+@pytest.mark.integration
 def test_harmony_analysis_from_lilypond(tmp_path: Path) -> None:
     source = ROOT / "tests" / "fixtures" / "progression.ly"
     output = tmp_path / "harmony.ily"

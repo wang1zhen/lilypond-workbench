@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -10,6 +11,7 @@ from typing import Any, Iterable
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[2]
+RESULT_SCHEMA_VERSION = 1
 
 
 @dataclass(slots=True)
@@ -35,6 +37,7 @@ class Result:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": RESULT_SCHEMA_VERSION,
             "ok": self.ok,
             "command": self.command,
             "inputs": self.inputs,
@@ -68,6 +71,21 @@ def run_process(
     env_overrides: dict[str, str] | None = None,
 ) -> ProcessResult:
     args = [os.fspath(item) for item in argv]
+    runner = os.environ.get("LILYPOND_WORKBENCH_RUNNER", "native")
+    if runner not in {"native", "container"}:
+        raise WorkbenchError(f"Unknown process runner: {runner}", "INVALID_RUNNER", exit_code=2)
+    if runner == "container":
+        return _run_container(args, cwd=cwd, timeout=timeout, env_overrides=env_overrides)
+    return _run_native(args, cwd=cwd, timeout=timeout, env_overrides=env_overrides)
+
+
+def _run_native(
+    args: list[str],
+    *,
+    cwd: Path | None,
+    timeout: int,
+    env_overrides: dict[str, str] | None,
+) -> ProcessResult:
     env = os.environ.copy()
     env.setdefault("LC_ALL", "C.UTF-8")
     cache_root = Path(tempfile.gettempdir()) / "lilypond-workbench-cache"
@@ -98,6 +116,84 @@ def run_process(
             exc.stderr or "",
             timed_out=True,
         )
+
+
+def _run_container(
+    args: list[str],
+    *,
+    cwd: Path | None,
+    timeout: int,
+    env_overrides: dict[str, str] | None,
+) -> ProcessResult:
+    if not args or Path(args[0]).name != "lilypond":
+        raise WorkbenchError(
+            f"Container runner currently supports LilyPond compilation, not {args[0] if args else 'an empty command'}",
+            "CONTAINER_UNSUPPORTED_TOOL",
+            exit_code=2,
+        )
+    runtime = shutil.which("podman") or shutil.which("docker")
+    if runtime is None:
+        raise WorkbenchError("Container runner requires docker or podman", "MISSING_CONTAINER_RUNTIME", exit_code=2)
+    work = (cwd or Path.cwd()).resolve()
+    output_paths: list[Path] = []
+    for index, value in enumerate(args[:-1]):
+        if value == "-o":
+            output_paths.append(Path(args[index + 1]).expanduser().resolve())
+    if any(path == work or work in path.parents for path in output_paths):
+        raise WorkbenchError(
+            "Container rendering requires an output directory outside the read-only source directory",
+            "CONTAINER_OUTPUT_CONFLICT",
+            exit_code=2,
+        )
+    mounts: list[tuple[Path, str, str]] = [(work, "/work", "ro")]
+    for output_index, path in enumerate(output_paths):
+        parent = path.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        if not any(existing == parent for existing, _, _ in mounts):
+            mounts.append((parent, f"/output{output_index}", "rw"))
+
+    def mapped(value: str) -> str:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            return value
+        resolved = path.resolve()
+        for host, guest, _mode in sorted(mounts, key=lambda item: len(item[0].parts), reverse=True):
+            try:
+                relative = resolved.relative_to(host)
+            except ValueError:
+                continue
+            return str(Path(guest) / relative)
+        raise WorkbenchError(
+            f"Container command path is outside declared mounts: {resolved}",
+            "CONTAINER_PATH_UNMAPPED",
+            exit_code=2,
+        )
+
+    command = [mapped(item) for item in args]
+    image = os.environ.get("LILYPOND_WORKBENCH_CONTAINER_IMAGE", "localhost/lilypond-workbench:2.24.4")
+    container_args = [
+        runtime,
+        "run",
+        "--rm",
+        "--network=none",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--tmpfs=/tmp:rw,noexec,nosuid,size=256m",
+        "--env=XDG_CACHE_HOME=/tmp/cache",
+        "--env=HOME=/tmp",
+    ]
+    if Path(runtime).name == "podman":
+        container_args.append("--userns=keep-id")
+    else:
+        container_args.append(f"--user={os.getuid()}:{os.getgid()}")
+    for host, guest, mode in mounts:
+        container_args.extend(["--volume", f"{host}:{guest}:{mode}"])
+    if env_overrides:
+        for key, value in env_overrides.items():
+            container_args.extend(["--env", f"{key}={value}"])
+    container_args.extend([image, *command])
+    return _run_native(container_args, cwd=work, timeout=timeout, env_overrides=None)
 
 
 def ensure_input(path: str | Path, suffixes: set[str] | None = None) -> Path:

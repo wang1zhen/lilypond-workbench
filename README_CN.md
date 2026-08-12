@@ -47,12 +47,12 @@ uv sync --group dev
 uv run python scripts/workbench.py doctor
 ```
 
-`doctor` 会报告 uv、LilyPond、格式转换工具及可选 LaTeX 工具链的版本。
+`doctor` 会报告 uv、LilyPond、格式转换工具及可选 LaTeX 工具链的版本。缺少可选工具
+只会产生警告；使用 `doctor --strict` 可要求全部导入与出版工具均可用。
 
-如需让 Codex 将本仓库识别为个人 skill，请把该目录放置或链接到：
-
-如果设置了 `CODEX_HOME`，使用 `$CODEX_HOME/skills/lilypond-workbench`；否则使用
-`~/.codex/skills/lilypond-workbench`。
+如需让另一个项目发现本 skill，请把该目录放置或链接到目标项目的
+`.agents/skills/lilypond-workbench`。如需跨项目个人使用，则放到
+`~/.agents/skills/lilypond-workbench`。
 
 本仓库目录本身就是完整的 skill 包，`SKILL.md` 是 agent 的入口文件。
 
@@ -92,6 +92,7 @@ uv run python scripts/workbench.py --help
 ```sh
 uv run python scripts/workbench.py new piano my-score.ly
 uv run python scripts/workbench.py validate my-score.ly
+uv run python scripts/workbench.py lint my-score.ly --output my-score.lint.json
 uv run python scripts/workbench.py render my-score.ly --output-dir build/score
 ```
 
@@ -128,9 +129,9 @@ uv run python scripts/workbench.py analyze-clefs full-score.ly \
   --output cello.clefs.json
 ```
 
-新生成的分谱清单使用 schema v2。保持 `clef.policy: suggest` 只生成带源码定位的
-报告；改为 `auto` 才会给该分谱添加独立谱号轨。schema v1 仍可读取，并保持原有
-行为。
+新生成的分谱清单使用 schema v3，并声明 `pitch_basis: concert|written`。保持
+`clef.policy: suggest` 只生成带源码定位的报告；改为 `auto` 才会给该分谱添加独立
+谱号轨。schema v1 与 v2 仍可读取，并保持原有行为。
 
 分析和声：
 
@@ -148,6 +149,11 @@ uv run python scripts/workbench.py build-document article.lytex \
 
 当结果需要交给另一个程序或 agent 步骤处理时，可对支持的命令添加 `--json`。
 
+所有 JSON 命令响应都使用带版本的 envelope，字段固定为 `schema_version`、`ok`、
+`command`、`inputs`、`artifacts`、`diagnostics` 和 `metadata`。退出码 0 表示成功，
+1 表示检查发现失败项或外部工具失败，2 表示输入/配置无效或缺少必需工具，130 表示
+被中断。`lint` 报告在 `metadata.report` 及可选报告文件中使用独立 schema 版本。
+
 ## 命令一览
 
 | 命令 | 用途 |
@@ -157,6 +163,7 @@ uv run python scripts/workbench.py build-document article.lytex \
 | `render` | 编译单个 `.ly` 文件 |
 | `batch-render` | 批量、可并发地编译乐谱 |
 | `validate` | 检查时值并进行不输出页面的 LilyPond 编译 |
+| `lint` | 检查结构、音域、谱号、移调元数据和分谱一致性 |
 | `parse-log` | 把 LilyPond 输出解析为结构化诊断 |
 | `import-score` | 将 MusicXML、MIDI 或 ABC 转换为 LilyPond |
 | `clean` | 统一 LilyPond 版本声明并格式化源码 |
@@ -203,6 +210,20 @@ uv add PACKAGE
 uv remove PACKAGE
 uv add --dev PACKAGE
 uv run pytest
+```
+
+运行 7 个可执行 skill 评测：
+
+```sh
+uv run python scripts/run_evals.py
+```
+
+处理不可信 LilyPond 输入时，构建隔离 runner，并把输出放在源目录之外：
+
+```sh
+docker build -t localhost/lilypond-workbench:2.24.4 -f containers/Dockerfile .
+uv run python scripts/workbench.py --runner container render score.ly \
+  --output-dir /tmp/lilypond-output
 ```
 
 不要手动修改 `pyproject.toml` 或 `uv.lock` 中的依赖列表，也不要绕过 `uv run`

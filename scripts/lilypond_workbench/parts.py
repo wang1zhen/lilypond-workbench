@@ -81,6 +81,7 @@ def build_manifest(source: Path) -> tuple[dict[str, Any], list[Diagnostic]]:
             "variable": variable.name,
             "staff_type": mapping.get("staff_type", "Staff"),
             "instrument": instrument,
+            "pitch_basis": "concert",
             "clef": {
                 "initial": _guess_clef(name, instrument),
                 "policy": "suggest" if instrument in {"violin", "viola", "cello"} else "preserve",
@@ -99,7 +100,7 @@ def build_manifest(source: Path) -> tuple[dict[str, Any], list[Diagnostic]]:
             )
         parts.append(item)
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "source": source.name,
         "source_mode": "strip-score-blocks",
         "output_dir": "build/parts",
@@ -131,9 +132,9 @@ def _clef_config(part: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _normalize_manifest(manifest: Any) -> dict[str, Any]:
-    if not isinstance(manifest, dict) or manifest.get("schema_version") not in {1, 2}:
-        raise WorkbenchError("Parts manifest must use schema_version: 1 or 2", "MANIFEST_SCHEMA", exit_code=2)
+def normalize_manifest(manifest: Any) -> dict[str, Any]:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") not in {1, 2, 3}:
+        raise WorkbenchError("Parts manifest must use schema_version: 1, 2, or 3", "MANIFEST_SCHEMA", exit_code=2)
     normalized = dict(manifest)
     parts = manifest.get("parts")
     if not isinstance(parts, list):
@@ -162,10 +163,53 @@ def _normalize_manifest(manifest: Any) -> dict[str, Any]:
                     exit_code=2,
                 )
             part["clef"] = config
+        if manifest["schema_version"] == 3 and "pitch_basis" not in part:
+            raise WorkbenchError(f"Part {part['id']} requires pitch_basis in schema v3", "MANIFEST_SCHEMA", exit_code=2)
+        pitch_basis = str(part.get("pitch_basis", "concert"))
+        if pitch_basis not in {"concert", "written"}:
+            raise WorkbenchError(
+                f"Part {part['id']} has invalid pitch_basis: {pitch_basis}",
+                "MANIFEST_SCHEMA",
+                exit_code=2,
+            )
+        part["pitch_basis"] = pitch_basis
+        transpose = part.get("transpose")
+        if transpose is not None and (
+            not isinstance(transpose, dict)
+            or not isinstance(transpose.get("from"), str)
+            or not isinstance(transpose.get("to"), str)
+        ):
+            raise WorkbenchError(
+                f"Part {part['id']} transpose requires string from and to pitches",
+                "MANIFEST_SCHEMA",
+                exit_code=2,
+            )
+        tags = part.get("tags")
+        if tags is not None and (not isinstance(tags, list) or not all(isinstance(tag, str) and tag for tag in tags)):
+            raise WorkbenchError(f"Part {part['id']} tags must be a list of strings", "MANIFEST_SCHEMA", exit_code=2)
+        range_override = part.get("range_override")
+        if range_override is not None and not isinstance(range_override, dict):
+            raise WorkbenchError(f"Part {part['id']} range_override must be a mapping", "MANIFEST_SCHEMA", exit_code=2)
         normalized_parts.append(part)
     normalized["parts"] = normalized_parts
-    normalized["schema_version"] = 2
+    suppressions = manifest.get("suppressions", [])
+    if not isinstance(suppressions, list):
+        raise WorkbenchError("Manifest suppressions must be a list", "MANIFEST_SCHEMA", exit_code=2)
+    for item in suppressions:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("rule_id"), str)
+            or not isinstance(item.get("reason"), str)
+            or not item["reason"].strip()
+        ):
+            raise WorkbenchError("Each suppression requires rule_id and a non-empty reason", "MANIFEST_SCHEMA", exit_code=2)
+    normalized["suppressions"] = suppressions
+    normalized["schema_version"] = 3
     return normalized
+
+
+# Backward-compatible private alias for callers written against 0.1.
+_normalize_manifest = normalize_manifest
 
 
 def _wrapper(
@@ -219,7 +263,7 @@ def extract_parts(
     manifest_file = manifest_path.resolve()
     raw_manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
     original_schema = raw_manifest.get("schema_version") if isinstance(raw_manifest, dict) else None
-    manifest = _normalize_manifest(raw_manifest)
+    manifest = normalize_manifest(raw_manifest)
     source = (manifest_file.parent / manifest["source"]).resolve()
     if not source.is_file():
         raise WorkbenchError(f"Manifest source not found: {source}", "INPUT_NOT_FOUND", exit_code=2)

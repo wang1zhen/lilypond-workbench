@@ -7,10 +7,10 @@ uv run --project "$SKILL_DIR" python "$SKILL_DIR/scripts/workbench.py" \
   parts-manifest score.ly --output parts.yaml
 ```
 
-New manifests use schema v2:
+New manifests use schema v3:
 
 ```yaml
-schema_version: 2
+schema_version: 3
 source: score.ly
 source_mode: strip-score-blocks
 output_dir: build/parts
@@ -18,6 +18,7 @@ parts:
   - id: violin-i
     name: Violin I
     instrument: violin
+    pitch_basis: concert
     variable: violinIMusic
     staff_type: Staff
     clef:
@@ -32,7 +33,9 @@ Clef policy is `preserve`, `suggest`, or `auto`. `suggest` writes a
 skip-based clef track for violin, viola, or cello and combines it with the
 shared music in the generated wrapper. It never edits the score source.
 Explicit source clefs remain authoritative. Schema v1 remains readable and is
-treated as `preserve` so existing output does not change.
+treated as `preserve` so existing output does not change. Schema v1 and v2
+remain readable; new manifests declare whether shared variables contain
+concert or written pitch.
 
 Review every `needs_review` entry and clef report. Fix names, instruments,
 initial clefs, transpositions, MIDI instruments, and tag selection before

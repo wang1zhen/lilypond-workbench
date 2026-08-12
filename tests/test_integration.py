@@ -6,6 +6,7 @@ import pytest
 from lilypond_workbench.documents import build_document
 from lilypond_workbench.harmony import analyze_harmony
 from lilypond_workbench.importers import import_score
+from lilypond_workbench.linting import lint_score
 from lilypond_workbench.parts import extract_parts, write_manifest
 from lilypond_workbench.rendering import batch_render, render_file, validate_file
 
@@ -56,6 +57,18 @@ def test_batch_render_and_failed_validation(tmp_path: Path) -> None:
     invalid = validate_file(ROOT / "tests" / "fixtures" / "broken.ly")
     assert not invalid.ok
     assert any(item.severity == "error" for item in invalid.diagnostics)
+
+
+@pytest.mark.integration
+def test_semantic_lint_runs_compiler_and_writes_report(tmp_path: Path) -> None:
+    source = ROOT / "tests" / "fixtures" / "progression.ly"
+    report = tmp_path / "progression.lint.json"
+
+    result = lint_score(source, output_path=report)
+
+    assert result.ok
+    assert result.metadata["report"]["schema_version"] == 1
+    assert report.is_file()
 
 
 @pytest.mark.integration
@@ -138,6 +151,7 @@ def test_harmony_analysis_from_lilypond(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.latex
 def test_latex_document_build(tmp_path: Path) -> None:
     source = ROOT / "assets" / "documents" / "article.lytex"
     result = build_document(source, output_dir=tmp_path, timeout=180)

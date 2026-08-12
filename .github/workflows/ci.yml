@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --frozen --group dev
+      - name: Fast tests and semantic-core coverage
+        run: >-
+          uv run pytest -m "not integration"
+          --cov=lilypond_workbench.clefs
+          --cov=lilypond_workbench.semantic
+          --cov=lilypond_workbench.syntax
+          --cov=lilypond_workbench.parts
+          --cov=lilypond_workbench.linting
+          --cov-fail-under=85
+      - name: Validate skill package
+        run: uv run python scripts/validate_skill.py .
+
+  integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - run: uv sync --frozen --group dev
+      - name: Install LilyPond 2.24.4
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/lilypond.tar.gz" \
+            https://gitlab.com/lilypond/lilypond/-/releases/v2.24.4/downloads/lilypond-2.24.4-linux-x86_64.tar.gz
+          tar -xzf "$RUNNER_TEMP/lilypond.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/lilypond-2.24.4/bin" >> "$GITHUB_PATH"
+      - run: lilypond --version | head -n 1 | grep '2.24.4'
+      - run: uv run pytest -m "integration and not latex" -q
+
+  latex:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen --group dev
+      - name: Install publishing toolchain
+        run: sudo apt-get update && sudo apt-get install -y lilypond latexmk texlive-luatex texlive-lang-chinese
+      - run: uv run pytest tests/test_integration.py::test_latex_document_build -q

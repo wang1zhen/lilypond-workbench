@@ -59,13 +59,12 @@ uv run python scripts/workbench.py doctor
 ```
 
 `doctor` reports the versions of uv, LilyPond, its converters, and the optional
-LaTeX toolchain.
+LaTeX toolchain. Missing optional tools are warnings; use `doctor --strict` to
+require every import and publishing executable.
 
-To make the repository discoverable as a personal Codex skill, place or
-symlink this directory at:
-
-Use `$CODEX_HOME/skills/lilypond-workbench` when `CODEX_HOME` is set; otherwise
-use `~/.codex/skills/lilypond-workbench`.
+To make the repository discoverable from another project, place or symlink it
+at `.agents/skills/lilypond-workbench` in that repository. For personal use
+across repositories, use `~/.agents/skills/lilypond-workbench`.
 
 The directory itself is the skill package; `SKILL.md` is its agent entry point.
 
@@ -106,6 +105,7 @@ Create and render a score from a bundled template:
 ```sh
 uv run python scripts/workbench.py new piano my-score.ly
 uv run python scripts/workbench.py validate my-score.ly
+uv run python scripts/workbench.py lint my-score.ly --output my-score.lint.json
 uv run python scripts/workbench.py render my-score.ly --output-dir build/score
 ```
 
@@ -142,9 +142,10 @@ uv run python scripts/workbench.py analyze-clefs full-score.ly \
   --output cello.clefs.json
 ```
 
-New parts manifests use schema v2. Leave `clef.policy` at `suggest` to produce
+New parts manifests use schema v3 and declare `pitch_basis: concert|written`.
+Leave `clef.policy` at `suggest` to produce
 a source-located report, or set it to `auto` to add a generated clef track to
-that part. Schema v1 remains readable and preserves its previous behavior.
+that part. Schema v1 and v2 remain readable and preserve their previous behavior.
 
 Analyze harmony:
 
@@ -163,6 +164,13 @@ uv run python scripts/workbench.py build-document article.lytex \
 Add `--json` to any command that supports it when another program or agent step
 will consume the result.
 
+Every JSON command response uses a versioned envelope with `schema_version`,
+`ok`, `command`, `inputs`, `artifacts`, `diagnostics`, and `metadata`. Exit 0
+means success, exit 1 means the operation completed with failing findings or a
+tool failure, exit 2 means invalid input/configuration or a missing required
+tool, and exit 130 means interruption. `lint` reports have their own schema
+version under `metadata.report` and in the optional report file.
+
 ## Command reference
 
 | Command | Purpose |
@@ -172,6 +180,7 @@ will consume the result.
 | `render` | Compile one `.ly` file |
 | `batch-render` | Compile multiple scores, optionally in parallel |
 | `validate` | Check durations and run a no-page LilyPond compile |
+| `lint` | Check structure, ranges, clefs, transposition metadata, and part consistency |
 | `parse-log` | Convert LilyPond output into structured diagnostics |
 | `import-score` | Convert MusicXML, MIDI, or ABC to LilyPond |
 | `clean` | Normalize LilyPond version and formatting |
@@ -234,6 +243,21 @@ requirements installed:
 
 ```sh
 uv run pytest
+```
+
+Run the seven executable skill evaluations with:
+
+```sh
+uv run python scripts/run_evals.py
+```
+
+For untrusted LilyPond input, build the isolated runner and keep generated
+outputs outside the source directory:
+
+```sh
+docker build -t localhost/lilypond-workbench:2.24.4 -f containers/Dockerfile .
+uv run python scripts/workbench.py --runner container render score.ly \
+  --output-dir /tmp/lilypond-output
 ```
 
 The full suite compiles every bundled score template and exercises imports,

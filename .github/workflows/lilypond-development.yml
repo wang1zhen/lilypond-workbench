@@ -1,0 +1,28 @@
+name: LilyPond development compatibility
+
+on:
+  schedule:
+    - cron: "43 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen --group dev
+      - name: Install current LilyPond development build
+        run: |
+          curl --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/lilypond.tar.gz" \
+            https://gitlab.com/lilypond/lilypond/-/releases/v2.25.81/downloads/lilypond-2.25.81-linux-x86_64.tar.gz
+          tar -xzf "$RUNNER_TEMP/lilypond.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/lilypond-2.25.81/bin" >> "$GITHUB_PATH"
+      - run: uv run pytest -m integration -q

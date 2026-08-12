@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
 
+from . import __version__
 from .clefs import analyze_clefs
 from .common import Diagnostic, Result, SKILL_ROOT, WorkbenchError, ensure_input, prepare_output, print_result
 from .diagnostics import parse_lilypond_log
 from .documents import build_document
 from .harmony import analyze_harmony
 from .importers import clean_file, import_score
+from .linting import lint_score
 from .parts import extract_parts, write_manifest
 from .rendering import batch_render, doctor, render_file, validate_file
 
@@ -21,10 +24,13 @@ def _add_json(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lilypond-workbench", description="Deterministic tools for the LilyPond Workbench skill")
-    parser.add_argument("--version", action="version", version="lilypond-workbench 0.1.0")
+    parser.add_argument("--version", action="version", version=f"lilypond-workbench {__version__}")
+    parser.add_argument("--runner", choices=["native", "container"], default="native", help="External process isolation backend")
+    parser.add_argument("--container-image", help="Container image containing LilyPond 2.24.4")
     sub = parser.add_subparsers(dest="command", required=True)
 
     doctor_parser = sub.add_parser("doctor", help="Check required local tools and versions")
+    doctor_parser.add_argument("--strict", action="store_true", help="Require import and document toolchains too")
     _add_json(doctor_parser)
 
     new_parser = sub.add_parser("new", help="Create a score from a bundled template")
@@ -64,6 +70,16 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--static-only", action="store_true")
     validate.add_argument("--timeout", type=int, default=60)
     _add_json(validate)
+
+    lint = sub.add_parser("lint", help="Run semantic, structural, range, and compiler quality checks")
+    lint.add_argument("input", type=Path)
+    lint.add_argument("--manifest", type=Path)
+    lint.add_argument("--output", type=Path)
+    lint.add_argument("--fail-on", choices=["error", "warning", "info"], default="error")
+    lint.add_argument("--static-only", action="store_true")
+    lint.add_argument("--force", action="store_true")
+    lint.add_argument("--timeout", type=int, default=60)
+    _add_json(lint)
 
     log = sub.add_parser("parse-log", help="Parse LilyPond output into diagnostics")
     log.add_argument("log", nargs="?", type=Path)
@@ -145,7 +161,7 @@ def _new_score(args: argparse.Namespace) -> Result:
 
 def dispatch(args: argparse.Namespace) -> Result:
     if args.command == "doctor":
-        return doctor()
+        return doctor(strict=args.strict)
     if args.command == "new":
         return _new_score(args)
     if args.command == "render":
@@ -177,6 +193,16 @@ def dispatch(args: argparse.Namespace) -> Result:
         )
     if args.command == "validate":
         return validate_file(ensure_input(args.input, {".ly"}), timeout=args.timeout, static_only=args.static_only)
+    if args.command == "lint":
+        return lint_score(
+            ensure_input(args.input, {".ly"}),
+            manifest_path=ensure_input(args.manifest, {".yaml", ".yml", ".json"}) if args.manifest else None,
+            output_path=args.output,
+            fail_on=args.fail_on,
+            static_only=args.static_only,
+            force=args.force,
+            timeout=args.timeout,
+        )
     if args.command == "parse-log":
         if args.text is not None:
             text = args.text
@@ -253,6 +279,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.runner == "container" and args.command not in {
+            "render",
+            "batch-render",
+            "validate",
+            "lint",
+            "analyze-harmony",
+        }:
+            raise WorkbenchError(
+                f"Container runner is not supported for {args.command}",
+                "CONTAINER_UNSUPPORTED_TOOL",
+                exit_code=2,
+            )
+        os.environ["LILYPOND_WORKBENCH_RUNNER"] = args.runner
+        if args.container_image:
+            os.environ["LILYPOND_WORKBENCH_CONTAINER_IMAGE"] = args.container_image
         result = dispatch(args)
         print_result(result, as_json=args.json)
         return 0 if result.ok else 1

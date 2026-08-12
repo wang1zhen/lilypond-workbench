@@ -1,40 +1,52 @@
 {
+  "schema_version": 1,
   "skill_name": "lilypond-workbench",
   "evals": [
     {
       "id": 1,
       "prompt": "创建一份两页以内的小提琴独奏 LilyPond 乐谱并输出 PDF。",
-      "expected": ["valid LilyPond 2.24.4 source", "playable violin range", "non-empty PDF"]
+      "expected": ["valid LilyPond 2.24.4 source", "playable violin range", "non-empty PDF"],
+      "pytest_nodes": ["tests/test_integration.py::test_template_compiles[single-staff]"]
     },
     {
       "id": 2,
       "prompt": "给这段旋律添加上下两套不同指法、上下弓、连音线和延音线。",
-      "expected": ["directed upper and lower fingerings", "semantic bow/slur/tie syntax", "successful compile"]
+      "expected": ["directed upper and lower fingerings", "semantic bow/slur/tie syntax", "successful compile"],
+      "pytest_nodes": ["tests/test_integration.py::test_template_compiles[annotations]"]
     },
     {
       "id": 3,
       "prompt": "分析 score.ly 的编译错误和小节时值问题并修复。",
-      "expected": ["structured diagnostics", "minimal source edits", "regenerated PDF"]
+      "expected": ["structured diagnostics", "minimal source edits", "regenerated PDF"],
+      "pytest_nodes": ["tests/test_integration.py::test_batch_render_and_failed_validation"]
     },
     {
       "id": 4,
       "prompt": "从弦乐总谱生成独立分谱并批量输出 PDF。",
-      "expected": ["reviewed schema v1 manifest", "shared source of truth", "one PDF per part"]
+      "expected": ["reviewed schema v3 manifest", "shared source of truth", "one PDF per part"],
+      "pytest_nodes": ["tests/test_integration.py::test_part_extraction_compiles"]
     },
     {
       "id": 5,
       "prompt": "分析这份 MusicXML 的和声，添加和弦名和罗马数字。",
-      "expected": ["local key analysis", "harmony.ily", "JSON confidence report", "low-confidence omissions reviewed"]
+      "expected": ["local key analysis", "harmony.ily", "JSON confidence report", "low-confidence omissions reviewed"],
+      "pytest_nodes": ["tests/test_integration.py::test_harmony_analysis_from_lilypond"]
     },
     {
       "id": 6,
       "prompt": "把 MIDI 和 ABC 转成整洁的 LilyPond，并制作一份含中文说明的 LaTeX PDF。",
-      "expected": ["converted and semantically reviewed scores", "LuaLaTeX lilypond-book document", "non-empty PDF"]
+      "expected": ["converted and semantically reviewed scores", "LuaLaTeX lilypond-book document", "non-empty PDF"],
+      "pytest_nodes": [
+        "tests/test_integration.py::test_import_musicxml_and_abc",
+        "tests/test_integration.py::test_import_generated_midi",
+        "tests/test_integration.py::test_latex_document_build"
+      ]
     },
     {
       "id": 7,
       "prompt": "分析弦乐总谱中 violin、viola 和 cello 的谱号使用，保留总谱源文件，为分谱生成稳定且不频繁切换的自动谱号轨。",
-      "expected": ["semantic written-pitch index", "source-located clef reports", "violin remains in treble", "viola alto/treble hysteresis", "cello bass/tenor/treble hysteresis", "successfully compiled parts"]
+      "expected": ["semantic written-pitch index", "source-located clef reports", "stable clef hysteresis", "successfully compiled parts"],
+      "pytest_nodes": ["tests/test_integration.py::test_automatic_cello_clef_track_compiles"]
     }
   ]
 }

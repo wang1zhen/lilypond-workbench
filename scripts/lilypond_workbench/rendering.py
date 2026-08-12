@@ -187,28 +187,34 @@ def batch_render(
     )
 
 
-def doctor() -> Result:
-    tools = [
-        "uv",
-        "lilypond",
-        "musicxml2ly",
-        "midi2ly",
-        "abc2ly",
-        "convert-ly",
-        "lilypond-book",
-        "latexmk",
-        "lualatex",
-    ]
+def doctor(*, strict: bool = False) -> Result:
+    tool_groups = {
+        "core": ("uv", "lilypond", "convert-ly"),
+        "import": ("musicxml2ly", "midi2ly", "abc2ly"),
+        "document": ("lilypond-book", "latexmk", "lualatex"),
+    }
     diagnostics: list[Diagnostic] = []
     versions: dict[str, str] = {}
-    for tool in tools:
-        resolved = shutil.which(tool)
-        if not resolved:
-            diagnostics.append(Diagnostic("error", "MISSING_TOOL", f"Required executable not found: {tool}"))
-            continue
-        process = run_process([tool, "--version"], timeout=15)
-        first_line = (process.stdout or process.stderr).splitlines()
-        versions[tool] = first_line[0] if first_line else resolved
+    availability: dict[str, dict[str, bool]] = {}
+    for group, tools in tool_groups.items():
+        availability[group] = {}
+        for tool in tools:
+            resolved = shutil.which(tool)
+            availability[group][tool] = resolved is not None
+            if not resolved:
+                severity = "error" if group == "core" or strict else "warning"
+                diagnostics.append(
+                    Diagnostic(
+                        severity,
+                        "MISSING_TOOL",
+                        f"{group.title()} executable not found: {tool}",
+                        details={"group": group, "tool": tool, "required": group == "core" or strict},
+                    )
+                )
+                continue
+            process = run_process([tool, "--version"], timeout=15)
+            first_line = (process.stdout or process.stderr).splitlines()
+            versions[tool] = first_line[0] if first_line else resolved
     lilypond_version = versions.get("lilypond", "")
     if lilypond_version and "2.24." not in lilypond_version:
         diagnostics.append(
@@ -219,4 +225,9 @@ def doctor() -> Result:
                 suggestion="Use the system LilyPond 2.24 installation for this skill.",
             )
         )
-    return Result(not any(item.severity == "error" for item in diagnostics), "doctor", diagnostics=diagnostics, metadata={"versions": versions})
+    return Result(
+        not any(item.severity == "error" for item in diagnostics),
+        "doctor",
+        diagnostics=diagnostics,
+        metadata={"strict": strict, "versions": versions, "availability": availability},
+    )

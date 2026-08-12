@@ -16,7 +16,7 @@ Use natural-language musical judgment for composition and semantic edits. Use th
    ```bash
    uv run --project "$SKILL_DIR" python "$SKILL_DIR/scripts/workbench.py" <command>
    ```
-5. Validate after every modification. Repair fatal diagnostics first, then review warnings. Render the requested PDF or other artifacts again so outputs are never stale.
+5. Run `lint` after every modification. Repair fatal diagnostics first, then review warnings. Render the requested PDF or other artifacts again so outputs are never stale.
 6. Report changed source files, generated artifacts, unresolved musical choices, and any warnings that remain.
 
 Run `doctor` before the first tool-assisted task in an unfamiliar environment. Treat LilyPond input as executable because embedded Guile/Scheme can run during compilation; compile untrusted input only in an appropriately isolated environment.
@@ -27,6 +27,7 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 - Choose playable registers, clefs, transpositions, or idiomatic instrumental writing: read [references/instruments.md](references/instruments.md), then use `analyze-clefs` for violin, viola, or cello parts.
 - Add one or more fingering systems, bowings, slurs, phrasing slurs, or ties: read [references/annotations.md](references/annotations.md).
 - Apply context settings, grob overrides, custom engravers, or Scheme: read [references/engraving.md](references/engraving.md).
+- Audit score structure, ranges, transposition metadata, clefs, or part consistency: read [references/linting.md](references/linting.md), then use `lint`.
 - Diagnose compiler errors or measure lengths: read [references/diagnostics.md](references/diagnostics.md), then use `validate` or `parse-log`.
 - Import or clean MusicXML, MIDI, or ABC: read [references/imports.md](references/imports.md), then use `import-score` and perform semantic review.
 - Generate independent parts: read [references/parts.md](references/parts.md), then use `parts-manifest` and `extract-parts`.
@@ -39,6 +40,7 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 - `render FILE`: compile one score; add `--output-dir`, `--format`, or `--json` as needed.
 - `batch-render PATH... --output-dir DIR`: compile multiple scores with optional recursion and concurrency.
 - `validate FILE`: run static duration checks and a no-page LilyPond validation compile.
+- `lint FILE [--manifest parts.yaml]`: create a source-located semantic quality report.
 - `parse-log [LOG]`: convert LilyPond output into structured diagnostics.
 - `import-score INPUT --output SCORE.ly`: convert and mechanically clean supported interchange formats.
 - `clean FILE`: normalize version and formatting without overwriting by default.
@@ -49,3 +51,8 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 - `build-document FILE.lytex --output-dir build/document`: run lilypond-book and LuaLaTeX.
 
 Prefer `--json` when another tool or agent step will consume results. Never use `--force` or `--in-place` without confirming the target is the intended file.
+
+For untrusted LilyPond input, build `containers/Dockerfile` and place global
+`--runner container` before the command. Container rendering requires an output
+directory outside the read-only source directory. Stop if no container runtime
+or reviewed container image is available.

@@ -1,6 +1,9 @@
 # Validation and repair
 
-Run `validate score.ly --json`. It combines a conservative source-level measure check with LilyPond's authoritative parser and bar checks.
+Run `lint score.ly --json` for the complete quality report, or `validate
+score.ly --json` when only duration and compiler diagnostics are needed. Both
+combine a conservative source-level measure check with LilyPond's authoritative
+parser and bar checks.
 
 Repair in this order:
 

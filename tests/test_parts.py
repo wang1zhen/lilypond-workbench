@@ -24,9 +24,10 @@ def test_manifest_maps_staffs(tmp_path: Path) -> None:
     source = tmp_path / "score.ly"
     source.write_text(SCORE, encoding="utf-8")
     manifest, diagnostics = build_manifest(source)
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert [item["id"] for item in manifest["parts"]] == ["violin-i", "cello"]
     assert manifest["parts"][1]["instrument"] == "cello"
+    assert manifest["parts"][1]["pitch_basis"] == "concert"
     assert manifest["parts"][1]["clef"] == {"initial": "bass", "policy": "suggest"}
     assert not diagnostics
 

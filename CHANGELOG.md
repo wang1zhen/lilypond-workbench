@@ -2,6 +2,32 @@
 
 All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
+## Unreleased
+
+### Fixed
+
+- `masked_source` no longer blanks a newline that follows a backslash inside a
+  string literal. The lost newline shifted every later line number, so
+  diagnostics pointed at the wrong source line after an escaped line break or an
+  unterminated quote.
+- The container runner now passes the image's own `lilypond` to the guest instead
+  of trying to map a host path for it into the container mounts.
+
+### Added
+
+- Contract tests for the CLI surface: exit codes 0, 1, 2, and 130, the versioned
+  JSON envelope, the container-runner command guard, and a check that every
+  subcommand stays documented in both READMEs and `SKILL.md`.
+- Unit tests for the container runner's mount layout, path rewriting, hardening
+  flags, and its refusals (output inside the read-only source tree, paths outside
+  every mount, unsupported tools, missing runtime).
+- Offset and blanking invariants for `masked_source`, including a seeded fuzz
+  corpus.
+
+### Changed
+
+- The CI coverage gate now also covers `cli` and `common`.
+
 ## 1.0.0 - 2026-08-13
 
 ### Added

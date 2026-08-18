@@ -169,7 +169,9 @@ def _run_container(
             exit_code=2,
         )
 
-    command = [mapped(item) for item in args]
+    # The image supplies its own LilyPond; a host path for it must not be
+    # mapped into the guest, where it does not exist.
+    command = [Path(args[0]).name, *(mapped(item) for item in args[1:])]
     image = os.environ.get("LILYPOND_WORKBENCH_CONTAINER_IMAGE", "localhost/lilypond-workbench:2.24.4")
     container_args = [
         runtime,

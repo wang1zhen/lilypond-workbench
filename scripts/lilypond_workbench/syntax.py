@@ -63,7 +63,11 @@ def masked_source(text: str) -> str:
                 chars[i] = " "
         elif state == "string":
             if char == "\\" and nxt:
-                chars[i] = chars[i + 1] = " "
+                chars[i] = " "
+                # Blanking an escaped newline would shift every later line
+                # number; strings may legally span lines, so keep it.
+                if nxt != "\n":
+                    chars[i + 1] = " "
                 i += 2
                 continue
             if char == '"':

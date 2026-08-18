@@ -144,6 +144,59 @@ def test_human_readable_output_reports_location_and_suggestion(
     assert "suggestion:" in out
 
 
+def test_human_readable_output_omits_the_structured_report(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["lint", str(FIXTURES / "progression.ly"), "--static-only"]) == 0
+    out = capsys.readouterr().out
+    assert "[OK] lint" in out
+    assert "report:" not in out
+    assert "schema_version" not in out
+
+
+def test_index_and_diff_are_routed_and_write_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    old_source = tmp_path / "old.ly"
+    new_source = tmp_path / "new.ly"
+    old_source.write_text('\\version "2.24.4"\nmusic = { c\'4 d\' e\' f\' }\n', encoding="utf-8")
+    new_source.write_text('\\version "2.24.4"\nmusic = { c\'4 des\' e\' f\' }\n', encoding="utf-8")
+
+    assert cli.main(["index", str(old_source), "--variable", "music", "--output", str(tmp_path / "i.json"), "--json"]) == 0
+    payload = envelope(capsys)
+    assert payload["metadata"]["report"]["schema_version"] == 2
+    assert payload["artifacts"] == [str(tmp_path / "i.json")]
+
+    assert cli.main(["diff", str(old_source), str(new_source), "--variable", "music", "--json"]) == 0
+    report = envelope(capsys)["metadata"]["report"]
+    assert report["summary"]["by_kind"] == {"pitch_changed": 1}
+
+
+def test_diff_exits_one_when_a_change_falls_outside_the_expected_measures(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old_source = tmp_path / "old.ly"
+    new_source = tmp_path / "new.ly"
+    old_source.write_text('\\version "2.24.4"\nmusic = { c\'4 d\' e\' f\' }\n', encoding="utf-8")
+    new_source.write_text('\\version "2.24.4"\nmusic = { c\'4 des\' e\' f\' }\n', encoding="utf-8")
+    argv = ["diff", str(old_source), str(new_source), "--variable", "music"]
+    assert cli.main([*argv, "--expect-measures", "1", "--json"]) == 0
+    capsys.readouterr()
+    assert cli.main([*argv, "--expect-measures", "5", "--json"]) == 1
+    assert envelope(capsys)["diagnostics"][-1]["code"] == "DIFF_OUTSIDE_EXPECTED"
+    capsys.readouterr()
+    assert cli.main([*argv, "--fail-on-change", "--json"]) == 1
+    codes = {item["code"] for item in envelope(capsys)["diagnostics"]}
+    assert "DIFF_UNEXPECTED_CHANGE" in codes
+
+
+def test_diff_rejects_a_malformed_measure_selection(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "score.ly"
+    source.write_text('\\version "2.24.4"\nmusic = { c\'4 }\n', encoding="utf-8")
+    assert cli.main(["diff", str(source), str(source), "--variable", "music", "--expect-measures", "4-2", "--json"]) == 2
+    assert envelope(capsys)["diagnostics"][0]["code"] == "INVALID_ARGUMENT"
+
+
 def test_clean_rejects_in_place_together_with_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

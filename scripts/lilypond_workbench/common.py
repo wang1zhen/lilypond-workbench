@@ -247,5 +247,6 @@ def print_result(result: Result, *, as_json: bool = False) -> None:
         if diagnostic.suggestion:
             print(f"    suggestion: {diagnostic.suggestion}")
     for key, value in result.metadata.items():
-        if key not in {"stdout", "stderr"}:
+        # Structured reports are for --json and --output, not for the terminal.
+        if key not in {"stdout", "stderr", "report"}:
             print(f"  {key}: {value}")

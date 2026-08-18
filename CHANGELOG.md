@@ -15,6 +15,20 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Added
 
+- `index` reports the semantic index of a music variable: events with written
+  pitch and accidental, markers, reconstructed measures, and source locations.
+- `diff` compares two scores by musical content instead of by text, locating
+  every difference by measure and beat. `--expect-measures` and
+  `--fail-on-change` turn the intended scope of an edit into an enforceable
+  check; `--new-variable` handles a renamed variable.
+- The semantic index now records key signatures, tempo marks, dynamics,
+  articulations, and repeats, and carries accidentals alongside diatonic
+  positions. Index schema version 2.
+- `SEMANTIC_REPEAT_DROPPED` warns when python-ly discards a `\repeat` that
+  directly follows a `\tempo` mark, instead of returning a short index with no
+  indication that notes are missing.
+- [references/comparison.md](references/comparison.md) for the comparison
+  workflow and its limits.
 - Contract tests for the CLI surface: exit codes 0, 1, 2, and 130, the versioned
   JSON envelope, the container-runner command guard, and a check that every
   subcommand stays documented in both READMEs and `SKILL.md`.
@@ -26,7 +40,9 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Changed
 
-- The CI coverage gate now also covers `cli` and `common`.
+- Human-readable output no longer dumps the structured report; it stays
+  available through `--json` and `--output`.
+- The CI coverage gate now also covers `cli`, `common`, and `comparison`.
 
 ## 1.0.0 - 2026-08-13
 

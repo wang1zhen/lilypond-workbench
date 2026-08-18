@@ -29,6 +29,9 @@ exclusively by [uv](https://docs.astral.sh/uv/).
   violin, viola, and cello clef changes and optionally apply them to parts.
 - Infer chord symbols, local keys, inversions, and Roman numerals, with a JSON
   confidence report for human review.
+- Report the semantic index of a music variable, and compare two scores by
+  musical content so an edit can be shown to have changed only what was
+  intended.
 - Render one score or batch-render a directory to PDF, PNG, SVG, or PostScript.
 - Build LuaLaTeX documents containing LilyPond notation through
   `lilypond-book`.
@@ -147,6 +150,28 @@ Leave `clef.policy` at `suggest` to produce
 a source-located report, or set it to `auto` to add a generated clef track to
 that part. Schema v1 and v2 remain readable and preserve their previous behavior.
 
+Report the semantic index of a music variable:
+
+```sh
+uv run python scripts/workbench.py index full-score.ly \
+  --variable violinMusic --output violin.index.json
+```
+
+Compare two scores by musical content rather than by text:
+
+```sh
+uv run python scripts/workbench.py diff before.ly after.ly \
+  --variable violinMusic --output violin.diff.json
+```
+
+`diff` walks both semantic indexes, so reformatting, comments, and a rewrite
+between relative and absolute pitch produce no differences, while an edited
+pitch, duration, key, clef, dynamic, articulation, tempo, or repeat is reported
+with its measure, beat, and source location. Pass `--expect-measures 37-40` to
+fail when anything outside those measures changed, or `--fail-on-change` to
+require that the music is untouched. Use `--new-variable` when the variable was
+renamed.
+
 Analyze harmony:
 
 ```sh
@@ -188,6 +213,8 @@ version under `metadata.report` and in the optional report file.
 | `extract-parts` | Generate part wrappers from a reviewed manifest |
 | `analyze-harmony` | Produce chord/Roman-numeral includes and an analysis report |
 | `analyze-clefs` | Recommend violin, viola, or cello clef changes from a semantic index |
+| `index` | Report the semantic index of one music variable |
+| `diff` | Compare two scores by musical content and locate every difference |
 | `build-document` | Run `lilypond-book` and LuaLaTeX |
 
 Run `uv run python scripts/workbench.py COMMAND --help` for all options.
@@ -273,6 +300,11 @@ LaTeX document generation.
   LilyPond include and retained in JSON for review.
 - Part extraction deliberately stops when the shared source cannot be isolated
   safely; review the manifest before compiling parts.
+- `index` and `diff` cover one music variable at a time and read written
+  pitches. Transposed passages keep their written accidentals rather than being
+  respelled, and a `\repeat` that directly follows a `\tempo` mark cannot be
+  parsed by python-ly; that case is reported as a warning instead of being
+  silently omitted.
 - Automatic clef tracks never edit the score source. Existing explicit clefs
   are preserved, and reports should be reviewed before publication.
 - LilyPond input can contain Guile/Scheme and must be treated as executable

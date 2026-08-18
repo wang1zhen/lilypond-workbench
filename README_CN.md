@@ -21,6 +21,8 @@ LilyPond Workbench 是一个面向 Codex 的 skill，同时也是一套确定性
 - 对相对音高、include、移调、连音组、反复和多声部建立书面音高语义索引，为
   violin、viola 和 cello 推荐稳定的谱号切换，并可选择仅在生成分谱中应用。
 - 推断和弦名称、局部调性、转位和罗马数字，并生成供人工复核的 JSON 置信度报告。
+- 输出音乐变量的语义索引；按音乐内容比较两份乐谱，从而证明一次编辑只改动了预期
+  的部分。
 - 将单份或多份乐谱渲染为 PDF、PNG、SVG 或 PostScript。
 - 通过 `lilypond-book` 构建包含乐谱的 LuaLaTeX 文档。
 
@@ -133,6 +135,26 @@ uv run python scripts/workbench.py analyze-clefs full-score.ly \
 `clef.policy: suggest` 只生成带源码定位的报告；改为 `auto` 才会给该分谱添加独立
 谱号轨。schema v1 与 v2 仍可读取，并保持原有行为。
 
+输出音乐变量的语义索引：
+
+```sh
+uv run python scripts/workbench.py index full-score.ly \
+  --variable violinMusic --output violin.index.json
+```
+
+按音乐内容而非文本比较两份乐谱：
+
+```sh
+uv run python scripts/workbench.py diff before.ly after.ly \
+  --variable violinMusic --output violin.diff.json
+```
+
+`diff` 比较双方的语义索引，因此重新排版、增删注释、以及在相对音高与绝对音高之间
+改写都不会产生差异；而音高、时值、调号、谱号、力度、演奏记号、速度或反复的改动，
+都会连同小节号、拍位和源码位置一并报告。加 `--expect-measures 37-40` 可在指定小节
+之外出现改动时失败；加 `--fail-on-change` 则要求音乐完全未变。变量被改名时使用
+`--new-variable`。
+
 分析和声：
 
 ```sh
@@ -171,6 +193,8 @@ uv run python scripts/workbench.py build-document article.lytex \
 | `extract-parts` | 根据审阅后的清单生成分谱 wrapper |
 | `analyze-harmony` | 生成和弦、罗马数字 include 及分析报告 |
 | `analyze-clefs` | 从语义索引推荐 violin、viola 或 cello 的谱号切换 |
+| `index` | 输出单个音乐变量的语义索引 |
+| `diff` | 按音乐内容比较两份乐谱并定位每处差异 |
 | `build-document` | 运行 `lilypond-book` 和 LuaLaTeX |
 
 可通过 `uv run python scripts/workbench.py COMMAND --help` 查看完整参数。
@@ -251,6 +275,9 @@ uv run pytest
 - 和声分析面向十二平均律下的传统功能和声、流行与爵士语汇。低置信度结果不会
   写入 LilyPond include，但会保留在 JSON 中供复核。
 - 当共享总谱无法安全拆分时，分谱工具会主动停止；编译前必须检查 manifest。
+- `index` 与 `diff` 每次只处理一个音乐变量，读取的是书面音高。移调段落保留其书面
+  临时记号而不做等音重写；紧接在 `\tempo` 之后的 `\repeat` 无法被 python-ly 解析，
+  该情况会以警告报告，而不是被静默忽略。
 - 自动谱号轨不会修改总谱源文件；已有显式谱号会被保留，出版前必须复核分析报告。
 - LilyPond 文件可以嵌入 Guile/Scheme，应当把输入视作可执行代码。不可信乐谱
   只能在适当隔离的环境中编译。

@@ -16,7 +16,7 @@ Use natural-language musical judgment for composition and semantic edits. Use th
    ```bash
    uv run --project "$SKILL_DIR" python "$SKILL_DIR/scripts/workbench.py" <command>
    ```
-5. Run `lint` after every modification. Repair fatal diagnostics first, then review warnings. Render the requested PDF or other artifacts again so outputs are never stale.
+5. After editing an existing score, run `diff` against the unmodified copy to confirm that only the intended measures changed. Run `lint` after every modification. Repair fatal diagnostics first, then review warnings. Render the requested PDF or other artifacts again so outputs are never stale.
 6. Report changed source files, generated artifacts, unresolved musical choices, and any warnings that remain.
 
 Run `doctor` before the first tool-assisted task in an unfamiliar environment. Treat LilyPond input as executable because embedded Guile/Scheme can run during compilation; compile untrusted input only in an appropriately isolated environment.
@@ -32,6 +32,7 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 - Import or clean MusicXML, MIDI, or ABC: read [references/imports.md](references/imports.md), then use `import-score` and perform semantic review.
 - Generate independent parts: read [references/parts.md](references/parts.md), then use `parts-manifest` and `extract-parts`.
 - Infer chord symbols, local keys, and Roman numerals: read [references/harmony.md](references/harmony.md), then use `analyze-harmony` and review low-confidence omissions.
+- Verify that an edit changed only the intended music, or inspect what a variable actually contains: read [references/comparison.md](references/comparison.md), then use `diff` and `index`.
 - Build a LaTeX document containing notation: read [references/latex.md](references/latex.md), then use the bundled `.lytex` template and `build-document`.
 
 ## CLI map
@@ -48,6 +49,8 @@ Run `doctor` before the first tool-assisted task in an unfamiliar environment. T
 - `extract-parts parts.yaml --compile`: generate and render wrappers from shared definitions.
 - `analyze-harmony INPUT --output harmony.ily`: generate chord names, Roman numerals, and JSON analysis.
 - `analyze-clefs INPUT --instrument INSTRUMENT --variable MUSIC --output clefs.json`: index written pitches and recommend stable string-part clef changes.
+- `index INPUT --variable MUSIC`: report events, markers, and measures of one music variable.
+- `diff OLD NEW --variable MUSIC`: compare two scores by musical content; add `--expect-measures` or `--fail-on-change` to make the intended scope of an edit enforceable.
 - `build-document FILE.lytex --output-dir build/document`: run lilypond-book and LuaLaTeX.
 
 Prefer `--json` when another tool or agent step will consume results. Never use `--force` or `--in-place` without confirming the target is the intended file.

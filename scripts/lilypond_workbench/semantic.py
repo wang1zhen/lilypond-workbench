@@ -15,7 +15,7 @@ from ly.music import event as music_event
 from ly.music import items
 
 from .common import Diagnostic, WorkbenchError
-from .syntax import find_command_blocks
+from .syntax import extract_music_variables, find_command_blocks, masked_source
 
 
 INCLUDE_RE = re.compile(r'\\include\s+"([^"\n]+)"')
@@ -38,6 +38,10 @@ class IndexedEvent:
     source: SourceLocation
     grace: bool = False
     cue: bool = False
+    # Alterations parallel `pitches`, in whole tones (-1/2 is one flat).  They
+    # are kept separate because staff position and range math want the
+    # diatonic value, while pitch identity needs the accidental.
+    alters: tuple[Fraction, ...] = ()
 
     @property
     def end(self) -> Fraction:
@@ -99,8 +103,12 @@ class SemanticIndex:
                     "kind": item.kind,
                     "offset": _fraction_text(item.offset),
                     "duration": _fraction_text(item.duration),
-                    "pitches": [_scientific_pitch(value) for value in item.pitches],
+                    "pitches": [
+                        pitch_label(value, alter)
+                        for value, alter in zip(item.pitches, item.alters or (Fraction(0),) * len(item.pitches))
+                    ],
                     "diatonic_pitches": list(item.pitches),
+                    "alters": [_fraction_text(alter) for alter in item.alters],
                     "grace": item.grace,
                     "cue": item.cue,
                     "source": asdict(item.source),
@@ -139,6 +147,7 @@ class _RawRecord:
     value: str
     source: SourceLocation
     grace: bool = False
+    alters: tuple[Fraction, ...] = ()
 
 
 def _fraction_text(value: Fraction) -> str:
@@ -149,6 +158,23 @@ def _scientific_pitch(diatonic: int) -> str:
     letters = "CDEFGAB"
     octave, note = divmod(diatonic, 7)
     return f"{letters[note]}{octave}"
+
+
+_ACCIDENTAL_SIGNS = {
+    Fraction(0): "",
+    Fraction(1, 2): "#",
+    Fraction(-1, 2): "b",
+    Fraction(1): "##",
+    Fraction(-1): "bb",
+}
+
+
+def pitch_label(diatonic: int, alter: Fraction = Fraction(0)) -> str:
+    """Name a pitch as C4, Fis becomes F#4, Bes becomes Bb3."""
+    letters = "CDEFGAB"
+    octave, note = divmod(diatonic, 7)
+    sign = _ACCIDENTAL_SIGNS.get(Fraction(alter), f"{float(alter):+g}")
+    return f"{letters[note]}{sign}{octave}"
 
 
 def _document_location(node: items.Item) -> SourceLocation:
@@ -164,6 +190,46 @@ def _document_location(node: items.Item) -> SourceLocation:
 
 def _pitch_position(pitch: Any) -> int:
     return (int(pitch.octave) + 3) * 7 + int(pitch.note)
+
+
+def _alter_of(pitch: Any) -> Fraction:
+    """Accidental in whole tones.  \transpose shifts diatonic steps only, so a
+    transposed alteration is reported as written rather than respelled."""
+    return Fraction(pitch.alter).limit_denominator(4)
+
+
+_ALTER_NAMES = {
+    Fraction(0): "",
+    Fraction(1, 2): "-sharp",
+    Fraction(-1, 2): "-flat",
+    Fraction(1): "-double-sharp",
+    Fraction(-1): "-double-flat",
+}
+
+
+def _key_name(node: items.KeySignature) -> str:
+    """Name a key signature without committing to a LilyPond pitch language."""
+    mode = str(node.mode() or "").strip()
+    pitch = node.pitch()
+    if pitch is None:
+        return mode
+    alter = Fraction(pitch.alter).limit_denominator(4)
+    letter = "CDEFGAB"[int(pitch.note)]
+    return f"{letter}{_ALTER_NAMES.get(alter, f'{float(alter):+g}')} {mode}".strip()
+
+
+def _tempo_text(node: items.Tempo) -> str:
+    parts: list[str] = []
+    text = node.text()
+    if text is not None:
+        try:
+            parts.append(text.plaintext().strip())
+        except AttributeError:
+            pass
+    metronome = [str(value) for value in node.tempo()]
+    if metronome:
+        parts.append(f"{_fraction_text(Fraction(node.fraction()))}={'-'.join(metronome)}")
+    return " ".join(item for item in parts if item)
 
 
 def _absolute_copy(document: ly.document.Document) -> ly.document.Document:
@@ -233,6 +299,9 @@ class _EventCollector(music_event.Events):
         self.records: list[_RawRecord] = []
         self._pitch_shift = 0
         self._commands: set[tuple[str, str]] = set()
+        # Dynamics and articulations are siblings of the durable they belong
+        # to, and traversal reaches them after its time has advanced.
+        self._last_onset = Fraction(0)
 
     def _record(
         self,
@@ -244,9 +313,19 @@ class _EventCollector(music_event.Events):
         pitches: tuple[int, ...] = (),
         value: str = "",
         grace: bool = False,
+        alters: tuple[Fraction, ...] = (),
     ) -> None:
         self.records.append(
-            _RawRecord(kind, Fraction(offset), Fraction(duration), pitches, value, _document_location(node), grace)
+            _RawRecord(
+                kind,
+                Fraction(offset),
+                Fraction(duration),
+                pitches,
+                value,
+                _document_location(node),
+                grace,
+                alters,
+            )
         )
 
     def traverse(self, node: items.Item, time: Fraction, scaling: Fraction) -> Fraction:
@@ -282,9 +361,22 @@ class _EventCollector(music_event.Events):
                 self._commands.remove(key)
         if isinstance(node, items.Chord):
             duration = Fraction(node.duration[0]) * Fraction(node.duration[1]) * scaling
-            pitches = tuple(sorted(_pitch_position(item.pitch) + self._pitch_shift for item in node.find(items.Note)))
+            voiced = sorted(
+                (_pitch_position(item.pitch) + self._pitch_shift, _alter_of(item.pitch))
+                for item in node.find(items.Note)
+            )
+            pitches = tuple(position for position, _alter in voiced)
             if duration:
-                self._record("chord", node, time, duration=duration, pitches=pitches, grace=scaling == 0)
+                self._record(
+                    "chord",
+                    node,
+                    time,
+                    duration=duration,
+                    pitches=pitches,
+                    grace=scaling == 0,
+                    alters=tuple(alter for _position, alter in voiced),
+                )
+                self._last_onset = time
             return time + duration
         if isinstance(node, items.Note):
             duration = Fraction(node.duration[0]) * Fraction(node.duration[1]) * scaling
@@ -296,12 +388,15 @@ class _EventCollector(music_event.Events):
                     duration=duration,
                     pitches=(_pitch_position(node.pitch) + self._pitch_shift,),
                     grace=scaling == 0,
+                    alters=(_alter_of(node.pitch),),
                 )
+                self._last_onset = time
             return time + duration
         if isinstance(node, (items.Rest, items.Skip)):
             duration = Fraction(node.duration[0]) * Fraction(node.duration[1]) * scaling
             if duration:
                 self._record("rest" if isinstance(node, items.Rest) else "skip", node, time, duration=duration)
+                self._last_onset = time
             return time + duration
         if isinstance(node, items.Clef):
             self._record("clef", node, time, value=str(node.specifier()))
@@ -313,6 +408,19 @@ class _EventCollector(music_event.Events):
                 duration=Fraction(node.measure_length()),
                 value=f"{node.numerator()}/{Fraction(node.fraction()).denominator}",
             )
+        elif isinstance(node, items.Dynamic):
+            self._record("dynamic", node, self._last_onset, value=str(node.token).lstrip("\\"))
+        elif isinstance(node, items.Articulation):
+            self._record("articulation", node, self._last_onset, value=str(node.token).lstrip("\\"))
+        elif isinstance(node, items.Postfix):
+            for child in node.find(items.Articulation):
+                self._record("articulation", child, self._last_onset, value=str(child.token).lstrip("\\"))
+        elif isinstance(node, items.KeySignature):
+            self._record("key", node, time, value=_key_name(node))
+        elif isinstance(node, items.Tempo):
+            self._record("tempo", node, time, value=_tempo_text(node))
+        elif isinstance(node, items.Repeat):
+            self._record("repeat", node, time, value=f"{node.specifier() or ''} {node.repeat_count() or ''}".strip())
         elif isinstance(node, items.Partial):
             self._record("partial", node, time, duration=Fraction(node.partial_length()))
         elif isinstance(node, items.PipeSymbol):
@@ -328,6 +436,40 @@ def _collect(assignment: items.Assignment) -> list[_RawRecord]:
     collector = _EventCollector()
     collector.read(assignment.value(), Fraction(0), Fraction(1))
     return collector.records
+
+
+_REPEAT_RE = re.compile(r"\\repeat\b")
+
+
+def _dropped_repeat_diagnostic(assignment: items.Assignment) -> Diagnostic | None:
+    """Warn when the parser silently discarded a repeat and its music.
+
+    python-ly drops the whole `\repeat` subtree when it directly follows a
+    `\tempo` mark, so the index comes back short with no other symptom.  The
+    text says how many repeats exist; the tree says how many survived.
+    """
+    document = assignment.document
+    text = document.plaintext()
+    name = str(assignment.name())
+    variable = next((item for item in extract_music_variables(text) if item.name == name), None)
+    if variable is None:
+        return None
+    body = masked_source(text)[variable.open_brace : variable.close_brace]
+    written = len(_REPEAT_RE.findall(body))
+    parsed = sum(1 for node in assignment.iter_depth() if isinstance(node, items.Repeat))
+    if written <= parsed:
+        return None
+    offset = variable.open_brace + (_REPEAT_RE.search(body).start() if _REPEAT_RE.search(body) else 0)
+    filename = document.filename or "<memory>"
+    return Diagnostic(
+        "warning",
+        "SEMANTIC_REPEAT_DROPPED",
+        f"{written - parsed} of {written} \\repeat block(s) in {name} could not be parsed; "
+        "their notes are missing from this index",
+        file=str(Path(filename).expanduser().resolve()) if filename != "<memory>" else filename,
+        line=text.count("\n", 0, offset) + 1,
+        suggestion="Separate \\tempo from a following \\repeat, for example by putting a note or a newline-separated command between them.",
+    )
 
 
 def _remap_locations(absolute: list[_RawRecord], original: list[_RawRecord]) -> tuple[list[_RawRecord], bool]:
@@ -438,6 +580,9 @@ def _cached_index(source_name: str, variable: str, fingerprint: str) -> Semantic
                 file=str(source),
             )
         )
+    dropped = _dropped_repeat_diagnostic(original_assignment)
+    if dropped is not None:
+        diagnostics.append(dropped)
     cue_ranges = _cue_ranges(source)
     events = tuple(
         IndexedEvent(
@@ -448,6 +593,7 @@ def _cached_index(source_name: str, variable: str, fingerprint: str) -> Semantic
             item.source,
             item.grace,
             any(start <= item.source.offset <= end for start, end in cue_ranges.get(item.source.file, [])),
+            item.alters,
         )
         for item in records
         if item.kind in {"note", "chord", "rest", "skip"}
@@ -456,7 +602,7 @@ def _cached_index(source_name: str, variable: str, fingerprint: str) -> Semantic
     markers = tuple(SemanticMarker(item.kind, item.offset, item.value, item.source) for item in marker_records)
     duration = max((item.end for item in events), default=Fraction(0))
     return SemanticIndex(
-        schema_version=1,
+        schema_version=2,
         source=str(source),
         variable=variable,
         fingerprint=fingerprint,

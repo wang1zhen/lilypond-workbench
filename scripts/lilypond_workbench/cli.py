@@ -9,6 +9,7 @@ from pathlib import Path
 from . import __version__
 from .clefs import analyze_clefs
 from .common import Diagnostic, Result, SKILL_ROOT, WorkbenchError, ensure_input, prepare_output, print_result
+from .comparison import diff_scores, index_score
 from .diagnostics import parse_lilypond_log
 from .documents import build_document
 from .harmony import analyze_harmony
@@ -140,6 +141,24 @@ def build_parser() -> argparse.ArgumentParser:
     clefs.add_argument("--force", action="store_true")
     _add_json(clefs)
 
+    index = sub.add_parser("index", help="Report the semantic index of a music variable")
+    index.add_argument("input", type=Path)
+    index.add_argument("--variable", required=True, help="Music variable to index")
+    index.add_argument("--output", type=Path)
+    index.add_argument("--force", action="store_true")
+    _add_json(index)
+
+    diff = sub.add_parser("diff", help="Compare two scores by musical content")
+    diff.add_argument("old", type=Path)
+    diff.add_argument("new", type=Path)
+    diff.add_argument("--variable", required=True, help="Music variable to compare")
+    diff.add_argument("--new-variable", help="Variable name in the new score when it was renamed")
+    diff.add_argument("--output", type=Path)
+    diff.add_argument("--expect-measures", help="Measures allowed to change, such as 12,37-40")
+    diff.add_argument("--fail-on-change", action="store_true", help="Fail when any musical difference is found")
+    diff.add_argument("--force", action="store_true")
+    _add_json(diff)
+
     document = sub.add_parser("build-document", help="Build a LilyPond-enabled LaTeX document")
     document.add_argument("input", type=Path)
     document.add_argument("--output-dir", type=Path, required=True)
@@ -268,6 +287,24 @@ def dispatch(args: argparse.Namespace) -> Result:
             instrument=args.instrument,
             output_path=args.output,
             initial_clef=args.initial_clef,
+            force=args.force,
+        )
+    if args.command == "index":
+        return index_score(
+            ensure_input(args.input, {".ly", ".ily"}),
+            variable=args.variable,
+            output_path=args.output,
+            force=args.force,
+        )
+    if args.command == "diff":
+        return diff_scores(
+            ensure_input(args.old, {".ly", ".ily"}),
+            ensure_input(args.new, {".ly", ".ily"}),
+            variable=args.variable,
+            new_variable=args.new_variable,
+            output_path=args.output,
+            expect_measures=args.expect_measures,
+            fail_on_change=args.fail_on_change,
             force=args.force,
         )
     if args.command == "build-document":

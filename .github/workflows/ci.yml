@@ -28,6 +28,7 @@ jobs:
           --cov=lilypond_workbench.cli
           --cov=lilypond_workbench.common
           --cov=lilypond_workbench.clefs
+          --cov=lilypond_workbench.comparison
           --cov=lilypond_workbench.semantic
           --cov=lilypond_workbench.syntax
           --cov=lilypond_workbench.parts

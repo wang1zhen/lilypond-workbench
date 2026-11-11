@@ -51,6 +51,8 @@ jobs:
           curl --fail --location --retry 3 \
             --output "$RUNNER_TEMP/lilypond.tar.gz" \
             https://gitlab.com/lilypond/lilypond/-/releases/v2.24.4/downloads/lilypond-2.24.4-linux-x86_64.tar.gz
+          echo "53bc1df875ee56dabe56ae1f0b4550237e0c9acc837b60f0ef8c42fc35a68641  $RUNNER_TEMP/lilypond.tar.gz" \
+            | sha256sum --check --strict -
           tar -xzf "$RUNNER_TEMP/lilypond.tar.gz" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/lilypond-2.24.4/bin" >> "$GITHUB_PATH"
       - run: lilypond --version | head -n 1 | grep '2.24.4'

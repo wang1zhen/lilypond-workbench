@@ -10,7 +10,7 @@ from music21 import analysis, chord, converter, harmony, key, roman, stream
 
 from .common import Diagnostic, Result, WorkbenchError, atomic_write, run_process
 from .diagnostics import parse_lilypond_log
-from .syntax import insert_midi_block
+from .syntax import find_command_blocks, insert_midi_block
 
 
 def _fraction(value: Any) -> Fraction:
@@ -77,9 +77,51 @@ def _confidence(item: chord.Chord, figure: str) -> tuple[float, str | None]:
     return 0.58, "Only two distinct pitch classes were available"
 
 
+def _select_score(text: str, score_index: int) -> str:
+    analysis_text = insert_midi_block(text, score_index)
+    scores = find_command_blocks(analysis_text, "score")
+    selected = scores[score_index]
+    if any(
+        block.command_start < selected.command_start and selected.close_brace <= block.close_brace
+        for block in scores
+        if block is not selected
+    ):
+        raise WorkbenchError(
+            f"Score index {score_index} selects a \\score nested inside another score; "
+            "it cannot be isolated for harmonic analysis",
+            "SCORE_ISOLATION_UNSUPPORTED",
+            exit_code=2,
+        )
+    # LilyPond names MIDI files by output order, not score index, so drop the
+    # other scores to make the selected score's MIDI unambiguous.
+    candidates = [
+        block
+        for block in scores
+        if block is not selected and not selected.command_start <= block.command_start <= selected.close_brace
+    ]
+    # Delete only outermost candidates: slicing an outer block already removes
+    # its nested scores, and deleting inner spans first would shift its close brace.
+    outermost = [
+        block
+        for block in candidates
+        if not any(
+            other.command_start < block.command_start and block.close_brace <= other.close_brace
+            for other in candidates
+            if other is not block
+        )
+    ]
+    for block in sorted(outermost, key=lambda item: item.command_start, reverse=True):
+        analysis_text = (
+            analysis_text[: block.command_start]
+            + "% removed: only the selected score is analyzed\n"
+            + analysis_text[block.close_brace + 1 :]
+        )
+    return analysis_text
+
+
 def _midi_from_lilypond(source: Path, score_index: int, timeout: int) -> tuple[Path, tempfile.TemporaryDirectory[str], list[Diagnostic]]:
     text = source.read_text(encoding="utf-8")
-    analysis_text = insert_midi_block(text, score_index)
+    analysis_text = _select_score(text, score_index)
     temp_output = tempfile.TemporaryDirectory(prefix="lilypond-workbench-harmony-")
     temporary_source: Path | None = None
     try:
@@ -112,6 +154,14 @@ def _midi_from_lilypond(source: Path, score_index: int, timeout: int) -> tuple[P
         if not midi_files:
             temp_output.cleanup()
             raise WorkbenchError("LilyPond produced no MIDI for the selected score", "HARMONY_MIDI_MISSING")
+        if len(midi_files) > 1:
+            temp_output.cleanup()
+            raise WorkbenchError(
+                "LilyPond produced multiple MIDI files; the selected score cannot be isolated "
+                "(for example, an \\include contributes its own \\score)",
+                "HARMONY_MIDI_AMBIGUOUS",
+                exit_code=2,
+            )
         return midi_files[0], temp_output, diagnostics
     finally:
         if temporary_source is not None:

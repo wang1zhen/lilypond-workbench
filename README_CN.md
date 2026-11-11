@@ -134,6 +134,10 @@ uv run python scripts/workbench.py analyze-clefs full-score.ly \
 新生成的分谱清单使用 schema v3，并声明 `pitch_basis: concert|written`。保持
 `clef.policy: suggest` 只生成带源码定位的报告；改为 `auto` 才会给该分谱添加独立
 谱号轨。schema v1 与 v2 仍可读取，并保持原有行为。
+清单的 `source` 路径以清单文件所在目录为基准，即使清单生成在其他目录也能使用。
+分谱 ID 必须是唯一、非空的文件名，不允许路径或点开头的名称；`_shared` 为保留名。
+即使使用 `--force`，生成文件也不能越出输出目录。
+自定义 `output_name` 也必须是非空文件名，不允许路径分隔符或点开头的名称。
 
 输出音乐变量的语义索引：
 
@@ -150,10 +154,11 @@ uv run python scripts/workbench.py diff before.ly after.ly \
 ```
 
 `diff` 比较双方的语义索引，因此重新排版、增删注释、以及在相对音高与绝对音高之间
-改写都不会产生差异；而音高、时值、调号、谱号、力度、演奏记号、速度或反复的改动，
+改写都不会产生差异；而音高、时值、起始时间、调号、谱号、力度、演奏记号、速度或反复的改动，
 都会连同小节号、拍位和源码位置一并报告。加 `--expect-measures 37-40` 可在指定小节
 之外出现改动时失败；加 `--fail-on-change` 则要求音乐完全未变。变量被改名时使用
 `--new-variable`。
+移动标记的生效位置也属于音乐变化；移动前后的小节都必须处于允许修改的范围内。
 
 分析和声：
 
@@ -222,7 +227,7 @@ uv run python scripts/workbench.py build-document article.lytex \
 │   ├── workbench.py         # CLI 入口
 │   └── lilypond_workbench/  # 确定性工具实现
 ├── tests/                   # 单元测试和工具链集成测试
-└── evals/evals.json         # 贴近真实请求的 skill 评估任务
+└── evals/evals.json         # 任务场景与回归测试的映射
 ```
 
 ## 开发约定
@@ -236,11 +241,16 @@ uv add --dev PACKAGE
 uv run pytest
 ```
 
-运行 7 个可执行 skill 评测：
+运行映射到 7 个任务场景的确定性回归检查：
 
 ```sh
 uv run python scripts/run_evals.py
 ```
+
+运行器只执行场景的 `pytest_nodes`，不会把 prompt 提交给 agent。prompt 与
+`expected` 描述的是更广泛的任务目标；测试通过不能证明页数限制、可演奏性、agent
+编辑质量或所有预期结果均已满足。例如，和声场景当前测试的是 LilyPond 输入，
+并非其描述的 MusicXML 工作流。
 
 处理不可信 LilyPond 输入时，构建隔离 runner，并把输出放在源目录之外：
 
@@ -249,6 +259,13 @@ docker build -t localhost/lilypond-workbench:2.24.4 -f containers/Dockerfile .
 uv run python scripts/workbench.py --runner container render score.ly \
   --output-dir /tmp/lilypond-output
 ```
+
+内置镜像仅支持 Linux amd64。ARM 主机需要 amd64 模拟支持，并使用
+`docker build --platform linux/amd64`，不支持原生 ARM 构建。下载文件会在解压前
+校验固定的 SHA256；覆盖构建参数 `LILYPOND_VERSION` 时，必须同时提供独立核实的
+对应版本 Linux x86_64 压缩包摘要 `LILYPOND_SHA256`。
+容器 runner 仅支持 `render`、`batch-render`、`validate`、`lint` 和
+`analyze-harmony`，并非所有 CLI 命令。
 
 不要手动修改 `pyproject.toml` 或 `uv.lock` 中的依赖列表，也不要绕过 `uv run`
 直接调用 `python`、`pytest` 或项目脚本。
@@ -274,6 +291,9 @@ uv run pytest
   细节都需要人工进行音乐性复核。
 - 和声分析面向十二平均律下的传统功能和声、流行与爵士语汇。低置信度结果不会
   写入 LilyPond include，但会保留在 JSON 中供复核。
+  LilyPond 输入的 `--score-index` 只选择源文件中直接声明的 score，不支持选择嵌套在
+  另一个 score 内的 score，也不能选择 include 中隐藏的 score；如果编译仍产生多个
+  MIDI 文件，分析会停止，而不是猜测选择。
 - 当共享总谱无法安全拆分时，分谱工具会主动停止；编译前必须检查 manifest。
 - `index` 与 `diff` 每次只处理一个音乐变量，读取的是书面音高。移调段落保留其书面
   临时记号而不做等音重写；紧接在 `\tempo` 之后的 `\repeat` 无法被 python-ly 解析，

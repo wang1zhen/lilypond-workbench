@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ STAFF_RE = re.compile(
     re.DOTALL,
 )
 INSTRUMENT_RE = re.compile(r'instrumentName\s*=\s*"([^"]+)"')
+RESERVED_PART_IDS = {"_shared"}
 
 
 def _part_id(name: str) -> str:
@@ -111,8 +113,10 @@ def build_manifest(source: Path) -> tuple[dict[str, Any], list[Diagnostic]]:
 
 def write_manifest(source: Path, output: Path, *, force: bool = False, as_json: bool = False) -> Result:
     manifest, diagnostics = build_manifest(source)
+    output_path = output.expanduser().resolve()
+    manifest["source"] = Path(os.path.relpath(source.resolve(), output_path.parent)).as_posix()
     text = json.dumps(manifest, ensure_ascii=False, indent=2) if as_json else yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True)
-    atomic_write(prepare_output(output, force=force), text, force=True)
+    atomic_write(prepare_output(output_path, force=force), text, force=True)
     return Result(True, "parts-manifest", [str(source)], [str(output.resolve())], diagnostics, {"parts": len(manifest["parts"])})
 
 
@@ -132,6 +136,34 @@ def _clef_config(part: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _validate_basename(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WorkbenchError(f"{label} must be a non-empty string", "MANIFEST_SCHEMA", exit_code=2)
+    if value in {".", ".."} or value.startswith(".") or any(sep in value for sep in ("/", "\\", "\x00")):
+        raise WorkbenchError(f"{label} must be a single filename, not a path: {value!r}", "MANIFEST_SCHEMA", exit_code=2)
+    if Path(value).is_absolute() or Path(value).name != value:
+        raise WorkbenchError(f"{label} must be a single filename, not a path: {value!r}", "MANIFEST_SCHEMA", exit_code=2)
+    return value
+
+
+def _validate_part_id(part_id: Any, seen: set[str]) -> str:
+    part_id = _validate_basename(part_id, "Part id")
+    key = part_id.casefold()
+    if key in RESERVED_PART_IDS:
+        raise WorkbenchError(f"Part id {part_id!r} is reserved for generated files", "MANIFEST_SCHEMA", exit_code=2)
+    if key in seen:
+        raise WorkbenchError(f"Duplicate part id: {part_id!r}", "MANIFEST_SCHEMA", exit_code=2)
+    seen.add(key)
+    return part_id
+
+
+def _part_output_path(destination: Path, name: str) -> Path:
+    path = (destination / name).resolve()
+    if not path.is_relative_to(destination):
+        raise WorkbenchError(f"Generated part path escapes output directory: {name}", "MANIFEST_SCHEMA", exit_code=2)
+    return path
+
+
 def normalize_manifest(manifest: Any) -> dict[str, Any]:
     if not isinstance(manifest, dict) or manifest.get("schema_version") not in {1, 2, 3}:
         raise WorkbenchError("Parts manifest must use schema_version: 1, 2, or 3", "MANIFEST_SCHEMA", exit_code=2)
@@ -140,10 +172,14 @@ def normalize_manifest(manifest: Any) -> dict[str, Any]:
     if not isinstance(parts, list):
         raise WorkbenchError("Parts manifest must contain a parts list", "MANIFEST_SCHEMA", exit_code=2)
     normalized_parts: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
     for raw_part in parts:
         if not isinstance(raw_part, dict) or not all(key in raw_part for key in ("id", "name", "variable")):
             raise WorkbenchError("Each part requires id, name, and variable", "MANIFEST_SCHEMA", exit_code=2)
+        _validate_part_id(raw_part["id"], seen_ids)
         part = dict(raw_part)
+        if "output_name" in part:
+            _validate_basename(part["output_name"], f"Part {part['id']} output_name")
         instrument = part.get("instrument") or _guess_instrument(str(part["name"]))
         part["instrument"] = instrument
         if manifest["schema_version"] == 1:
@@ -279,10 +315,10 @@ def extract_parts(
             f"Part variables are not available outside score/book blocks: {', '.join(missing)}",
             "PARTS_UNSUPPORTED_STRUCTURE",
         )
-    shared = destination / "_shared.ily"
-    wrappers = [destination / f"{part['id']}.ly" for part in manifest.get("parts", [])]
+    shared = _part_output_path(destination, "_shared.ily")
+    wrappers = [_part_output_path(destination, f"{part['id']}.ly") for part in manifest.get("parts", [])]
     reports = [
-        destination / f"{part['id']}.clefs.json"
+        _part_output_path(destination, f"{part['id']}.clefs.json")
         for part in manifest.get("parts", [])
         if _clef_config(part)["policy"] in {"suggest", "auto"}
     ]
@@ -314,7 +350,7 @@ def extract_parts(
                 initial_clef=config["initial"],
             )
             diagnostics.extend(analysis.diagnostics)
-            report = destination / f"{part['id']}.clefs.json"
+            report = _part_output_path(destination, f"{part['id']}.clefs.json")
             atomic_write(report, json.dumps(analysis.to_dict(semantic_index), ensure_ascii=False, indent=2) + "\n", force=force)
             artifacts.append(str(report))
             if config["policy"] == "auto":

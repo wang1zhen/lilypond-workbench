@@ -6,6 +6,18 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Fixed
 
+- Parts manifests reject unsafe part IDs and output names or conflicting IDs.
+  Generated paths cannot escape the output directory, even with `--force`.
+- Manifests written outside the source directory now retain a usable relative
+  source path.
+- Semantic comparisons report changes to event onsets and marker positions,
+  including the old and new measures when checking an edit's allowed scope.
+- External-tool timeouts normalize captured output to text instead of failing
+  while constructing diagnostics.
+- Harmony analysis selects the requested score's MIDI rather than the first
+  filename returned by the compiler.
+- The comparison guide uses the workbench CLI and preserves relative includes
+  when taking a source backup.
 - `masked_source` no longer blanks a newline that follows a backslash inside a
   string literal. The lost newline shifted every later line number, so
   diagnostics pointed at the wrong source line after an escaped line break or an
@@ -40,6 +52,13 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Changed
 
+- CI and container builds verify pinned LilyPond archive SHA256 hashes before
+  extraction. The container explicitly requires amd64; version overrides also
+  require the matching archive checksum.
+- The development-release workflow names its pinned version and excludes LaTeX
+  tests, which remain covered by the stable publishing job.
+- Documentation distinguishes scenario-mapped regression checks from agent
+  evaluations and updates the coverage and container-command descriptions.
 - Human-readable output no longer dumps the structured report; it stays
   available through `--json` and `--output`.
 - The CI coverage gate now also covers `cli`, `common`, and `comparison`.

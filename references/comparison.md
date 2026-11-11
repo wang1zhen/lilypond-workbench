@@ -5,10 +5,16 @@ an edit did only what was asked. Use it whenever you modify an existing score:
 copy the original first, edit, then compare.
 
 ```sh
-cp score.ly /tmp/score.before.ly
+cp -n score.ly score.before.ly
 # make the edit
-diff /tmp/score.before.ly score.ly --variable violinMusic --expect-measures 37-40
+uv run python scripts/workbench.py diff score.before.ly score.ly \
+  --variable violinMusic --expect-measures 37-40
 ```
+
+Keep the backup beside the original so relative includes still resolve. Use a
+fresh backup name for each edit; do not reuse an existing `score.before.ly`.
+When editing included files too, preserve a separate copy of the whole source
+tree and compare the two trees' entry files instead.
 
 A text diff cannot answer this question. Inside `\relative`, editing one pitch
 silently transposes everything after it while the text shows a single-character

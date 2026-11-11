@@ -18,11 +18,14 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --frozen --group dev
-      - name: Install current LilyPond development build
+      - name: Install pinned LilyPond 2.25.81
         run: |
           curl --fail --location --retry 3 \
             --output "$RUNNER_TEMP/lilypond.tar.gz" \
             https://gitlab.com/lilypond/lilypond/-/releases/v2.25.81/downloads/lilypond-2.25.81-linux-x86_64.tar.gz
+          echo "de554fdc0a4e2ef299802e31a911f463c92cb0ae8bdf0575a1aa4d7dae341913  $RUNNER_TEMP/lilypond.tar.gz" \
+            | sha256sum --check --strict -
           tar -xzf "$RUNNER_TEMP/lilypond.tar.gz" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/lilypond-2.25.81/bin" >> "$GITHUB_PATH"
-      - run: uv run pytest -m integration -q
+      - run: lilypond --version | head -n 1 | grep '2.25.81'
+      - run: uv run pytest -m "integration and not latex" -q

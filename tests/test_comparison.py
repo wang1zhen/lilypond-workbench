@@ -191,6 +191,92 @@ def test_a_dropped_dynamic_is_reported(tmp_path: Path) -> None:
     assert report_of(result)["changes"][0]["detail"] == "removed dynamic f"
 
 
+def test_a_moved_dynamic_is_reported_as_a_move(tmp_path: Path) -> None:
+    old = write(tmp_path, "old.ly", '\\version "2.24.4"\nmusic = { c\'4\\f d\'4 e\'4 f\'4 }\n')
+    new = write(tmp_path, "new.ly", '\\version "2.24.4"\nmusic = { c\'4 d\'4\\f e\'4 f\'4 }\n')
+    result = diff_scores(old, new, variable="music", fail_on_change=True)
+    assert not result.ok
+    assert kinds(result) == ["marker_moved"]
+    change = report_of(result)["changes"][0]
+    assert change["detail"] == "dynamic f moved from offset 0 to 1/4"
+    assert (change["old"]["measure"], change["old"]["beat"]) == (1, "1")
+    assert (change["new"]["measure"], change["new"]["beat"]) == (1, "2")
+    assert report_of(result)["identical"] is False
+
+
+def test_sequential_notes_turned_simultaneous_are_a_timing_change(tmp_path: Path) -> None:
+    old = write(tmp_path, "old.ly", '\\version "2.24.4"\nmusic = { c\'4 d\'4 }\n')
+    new = write(tmp_path, "new.ly", '\\version "2.24.4"\nmusic = << { c\'4 } \\\\ { d\'4 } >>\n')
+    result = diff_scores(old, new, variable="music", fail_on_change=True)
+    assert not result.ok
+    assert kinds(result) == ["timing_changed"]
+    change = report_of(result)["changes"][0]
+    assert change["detail"] == "onset 1/4 became 0"
+    assert (change["old"]["measure"], change["old"]["beat"]) == (1, "2")
+    assert (change["new"]["measure"], change["new"]["beat"]) == (1, "1")
+    assert report_of(result)["summary"]["changes"] == 1
+    assert report_of(result)["summary"]["duration_changed"] is True
+    assert report_of(result)["identical"] is False
+
+
+def test_a_moved_marker_is_checked_against_both_sides_of_expect_measures(tmp_path: Path) -> None:
+    old = write(
+        tmp_path,
+        "old.ly",
+        '\\version "2.24.4"\nmusic = { \\time 4/4 c\'4\\f d\'4 e\'4 f\'4 | g\'4 a\'4 b\'4 c\'\'4 }\n',
+    )
+    new = write(
+        tmp_path,
+        "new.ly",
+        '\\version "2.24.4"\nmusic = { \\time 4/4 c\'4 d\'4 e\'4 f\'4 | g\'4\\f a\'4 b\'4 c\'\'4 }\n',
+    )
+    assert report_of(diff_scores(old, new, variable="music"))["changes"][0]["measures"] == [1, 2]
+    assert not diff_scores(old, new, variable="music", expect_measures="1").ok
+    assert diff_scores(old, new, variable="music", expect_measures="1,2").ok
+
+
+def test_an_insertion_does_not_hide_an_onset_change_outside_the_expected_measure(tmp_path: Path) -> None:
+    old = write(
+        tmp_path,
+        "old.ly",
+        '\\version "2.24.4"\nmusic = \\relative c\' { \\time 4/4 c4 d4 e4 f4 | g4 a4 b4 c4 }\n',
+    )
+    new = write(
+        tmp_path,
+        "new.ly",
+        '\\version "2.24.4"\nmusic = \\relative c\' { \\time 4/4 c8 c4 d4 e4 f8 |'
+        ' << { g4 } \\\\ { a4 b4 c4 } >> }\n',
+    )
+    report = report_of(diff_scores(old, new, variable="music"))
+    assert ("timing_changed", 2) in {(change["kind"], change["new"]["measure"]) for change in report["changes"]}
+    # The inserted note is allowed; the independent onset move in measure 2 is not.
+    assert not diff_scores(old, new, variable="music", expect_measures="1").ok
+    assert diff_scores(old, new, variable="music", expect_measures="1,2").ok
+
+
+@pytest.mark.parametrize(
+    ("new_body", "detail"),
+    [
+        ("c'2 e'4", "pitch D4 became E4; onset 1/4 became 1/2"),
+        ("c'8 d'2", "duration 1/4 became 1/2; onset 1/4 became 1/8"),
+    ],
+)
+def test_a_replaced_event_also_records_its_onset(tmp_path: Path, new_body: str, detail: str) -> None:
+    old = write(tmp_path, "old.ly", '\\version "2.24.4"\nmusic = { c\'4 d\'4 }\n')
+    new = write(tmp_path, "new.ly", f'\\version "2.24.4"\nmusic = {{ {new_body} }}\n')
+    details = {change["detail"] for change in report_of(diff_scores(old, new, variable="music"))["changes"]}
+    assert detail in details
+
+
+def test_a_total_duration_change_is_never_silently_identical(tmp_path: Path) -> None:
+    old = write(tmp_path, "old.ly", '\\version "2.24.4"\nmusic = { c\'4 }\n')
+    new = write(tmp_path, "new.ly", '\\version "2.24.4"\nmusic = { c\'2 }\n')
+    report = report_of(diff_scores(old, new, variable="music"))
+    assert report["summary"]["duration_changed"] is True
+    assert report["summary"]["changes"] > 0
+    assert report["identical"] is False
+
+
 def test_a_changed_key_signature_is_reported(tmp_path: Path) -> None:
     old = write(tmp_path, "old.ly", BASE)
     new = write(tmp_path, "new.ly", BASE.replace("\\key c \\major", "\\key a \\minor"))

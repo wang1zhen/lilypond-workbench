@@ -149,6 +149,11 @@ New parts manifests use schema v3 and declare `pitch_basis: concert|written`.
 Leave `clef.policy` at `suggest` to produce
 a source-located report, or set it to `auto` to add a generated clef track to
 that part. Schema v1 and v2 remain readable and preserve their previous behavior.
+Manifest `source` paths are relative to the manifest file, even when it is
+generated in a different directory. Part IDs must be unique, non-empty filenames,
+not paths or dot-prefixed names; `_shared` is reserved. Generated files cannot
+escape the output directory, even with `--force`. A custom `output_name` must
+also be a non-empty filename without path separators or a leading dot.
 
 Report the semantic index of a music variable:
 
@@ -166,11 +171,13 @@ uv run python scripts/workbench.py diff before.ly after.ly \
 
 `diff` walks both semantic indexes, so reformatting, comments, and a rewrite
 between relative and absolute pitch produce no differences, while an edited
-pitch, duration, key, clef, dynamic, articulation, tempo, or repeat is reported
+pitch, duration, onset, key, clef, dynamic, articulation, tempo, or repeat is reported
 with its measure, beat, and source location. Pass `--expect-measures 37-40` to
 fail when anything outside those measures changed, or `--fail-on-change` to
 require that the music is untouched. Use `--new-variable` when the variable was
 renamed.
+Moving a marker is also a musical change; its old and new measures must both be
+inside the allowed scope.
 
 Analyze harmony:
 
@@ -242,7 +249,7 @@ starter is `assets/documents/article.lytex`.
 │   ├── workbench.py         # CLI entry point
 │   └── lilypond_workbench/  # Deterministic implementation
 ├── tests/                   # Unit and toolchain integration tests
-└── evals/evals.json         # Realistic skill evaluation prompts
+└── evals/evals.json         # Task scenarios mapped to regression tests
 ```
 
 ## Development
@@ -272,11 +279,17 @@ requirements installed:
 uv run pytest
 ```
 
-Run the seven executable skill evaluations with:
+Run the deterministic regression checks mapped to seven task scenarios with:
 
 ```sh
 uv run python scripts/run_evals.py
 ```
+
+This runner executes the scenarios' `pytest_nodes`, not their agent prompts.
+The prompts and `expected` fields describe broader task goals; passing these
+checks does not establish page limits, playability, agent editing quality, or
+every listed outcome. For example, the harmony scenario currently tests
+LilyPond input, not its requested MusicXML workflow.
 
 For untrusted LilyPond input, build the isolated runner and keep generated
 outputs outside the source directory:
@@ -286,6 +299,14 @@ docker build -t localhost/lilypond-workbench:2.24.4 -f containers/Dockerfile .
 uv run python scripts/workbench.py --runner container render score.ly \
   --output-dir /tmp/lilypond-output
 ```
+
+The bundled image supports Linux amd64 only. ARM hosts need amd64 emulation
+and `docker build --platform linux/amd64`; native ARM builds are not supported.
+The download is checked against a pinned SHA256 before extraction. If overriding
+the `LILYPOND_VERSION` build argument, also supply the independently verified
+`LILYPOND_SHA256` for that version's Linux x86_64 archive.
+The container runner supports only `render`, `batch-render`, `validate`, `lint`,
+and `analyze-harmony`, not every CLI command.
 
 The full suite compiles every bundled score template and exercises imports,
 batch rendering, error detection, part extraction, harmonic analysis, and
@@ -298,6 +319,10 @@ LaTeX document generation.
 - Harmonic analysis targets common-practice, pop, and jazz harmony in
   12-tone equal temperament. Low-confidence events are omitted from the
   LilyPond include and retained in JSON for review.
+  For LilyPond input, `--score-index` selects a score in the source file itself.
+  Selecting a score nested inside another score is unsupported, and scores
+  hidden in includes are not selectable; if compilation still produces
+  multiple MIDI files, analysis stops rather than guessing which one to use.
 - Part extraction deliberately stops when the shared source cannot be isolated
   safely; review the manifest before compiling parts.
 - `index` and `diff` cover one music variable at a time and read written

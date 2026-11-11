@@ -70,6 +70,10 @@ def _marker_identity(marker: SemanticMarker) -> tuple[Any, ...]:
     return (marker.kind, marker.value)
 
 
+def _marker_sort_key(marker: SemanticMarker) -> tuple[Any, ...]:
+    return (_marker_identity(marker), marker.offset)
+
+
 def _event_side(index: SemanticIndex, event: IndexedEvent) -> dict[str, Any]:
     position = index.position(event.offset)
     return {
@@ -115,6 +119,44 @@ def _measures_of(*sides: dict[str, Any] | None) -> tuple[int, ...]:
     return tuple(sorted({side["measure"] for side in sides if side is not None}))
 
 
+def _event_move(
+    old_index: SemanticIndex,
+    new_index: SemanticIndex,
+    old_item: IndexedEvent,
+    new_item: IndexedEvent,
+) -> Change | None:
+    if old_item.offset == new_item.offset:
+        return None
+    old_side = _event_side(old_index, old_item)
+    new_side = _event_side(new_index, new_item)
+    return Change(
+        "timing_changed",
+        f"onset {old_side['offset']} became {new_side['offset']}",
+        _measures_of(old_side, new_side),
+        old_side,
+        new_side,
+    )
+
+
+def _marker_move(
+    old_index: SemanticIndex,
+    new_index: SemanticIndex,
+    old_item: SemanticMarker,
+    new_item: SemanticMarker,
+) -> Change | None:
+    if old_item.offset == new_item.offset:
+        return None
+    old_side = _marker_side(old_index, old_item)
+    new_side = _marker_side(new_index, new_item)
+    return Change(
+        "marker_moved",
+        f"{old_item.kind} {old_item.value} moved from offset {old_side['offset']} to {new_side['offset']}",
+        _measures_of(old_side, new_side),
+        old_side,
+        new_side,
+    )
+
+
 def _pair_change(
     old_index: SemanticIndex,
     new_index: SemanticIndex,
@@ -134,6 +176,8 @@ def _pair_change(
         differences.append(f"duration {old_side['duration']} became {new_side['duration']}")
     if old_item.grace != new_item.grace:
         differences.append("grace status changed")
+    if old_item.offset != new_item.offset:
+        differences.append(f"onset {old_side['offset']} became {new_side['offset']}")
     if not differences:
         return None
     kind = "event_changed"
@@ -141,6 +185,8 @@ def _pair_change(
         kind = "pitch_changed"
     elif len(differences) == 1 and old_item.duration != new_item.duration:
         kind = "duration_changed"
+    elif len(differences) == 1 and old_item.offset != new_item.offset:
+        kind = "timing_changed"
     return Change(kind, "; ".join(differences), _measures_of(old_side, new_side), old_side, new_side)
 
 
@@ -155,6 +201,7 @@ def _compare(
     added: str,
     removed: str,
     changed=None,
+    moved=None,
 ) -> list[Change]:
     matcher = SequenceMatcher(
         None,
@@ -165,6 +212,16 @@ def _compare(
     changes: list[Change] = []
     for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
         if tag == "equal":
+            # Identical music can sit at a different time.  An insertion shifts
+            # every later onset, and that shift is itself a musical change worth
+            # reporting, so check every matched pair.
+            if moved is not None:
+                for old_item, new_item in zip(
+                    old_items[old_start:old_end], new_items[new_start:new_end], strict=True
+                ):
+                    change = moved(old_index, new_index, old_item, new_item)
+                    if change is not None:
+                        changes.append(change)
             continue
         old_slice = old_items[old_start:old_end]
         new_slice = new_items[new_start:new_end]
@@ -224,17 +281,19 @@ def diff_scores(
         added="event_added",
         removed="event_removed",
         changed=_pair_change,
+        moved=_event_move,
     )
     changes.extend(
         _compare(
             old_index,
             new_index,
-            old_index.markers,
-            new_index.markers,
+            sorted(old_index.markers, key=_marker_sort_key),
+            sorted(new_index.markers, key=_marker_sort_key),
             identity=_marker_identity,
             side=_marker_side,
             added="marker_added",
             removed="marker_removed",
+            moved=_marker_move,
         )
     )
     changes.sort(key=_sort_key)

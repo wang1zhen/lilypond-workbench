@@ -109,13 +109,13 @@ def _run_native(
     except FileNotFoundError as exc:
         raise WorkbenchError(f"Required executable not found: {args[0]}", "MISSING_TOOL", exit_code=2) from exc
     except subprocess.TimeoutExpired as exc:
-        return ProcessResult(
-            args,
-            -2,
-            exc.stdout or "",
-            exc.stderr or "",
-            timed_out=True,
-        )
+        # TimeoutExpired keeps bytes even when text=True, and either may be None.
+        def as_text(value: str | bytes | None) -> str:
+            if isinstance(value, bytes):
+                return value.decode("utf-8", errors="replace")
+            return value or ""
+
+        return ProcessResult(args, -2, as_text(exc.stdout), as_text(exc.stderr), timed_out=True)
 
 
 def _run_container(

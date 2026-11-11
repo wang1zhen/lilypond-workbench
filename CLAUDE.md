@@ -27,7 +27,7 @@ uv run python scripts/run_evals.py             # run the executable skill evals
 uv run python scripts/run_evals.py --id 3      # one eval
 ```
 
-`pytest` markers: `integration` (needs system LilyPond) and `latex` (needs `lilypond-book` + LuaLaTeX + `latexmk`). CI (`.github/workflows/ci.yml`) runs the fast suite on Python 3.11/3.12/3.13 with **`--cov-fail-under=85` scoped to the semantic core** (`clefs`, `semantic`, `syntax`, `parts`, `linting`) — changes to those five modules must come with tests or CI fails.
+`pytest` markers: `integration` (needs system LilyPond) and `latex` (needs `lilypond-book` + LuaLaTeX + `latexmk`). CI (`.github/workflows/ci.yml`) runs the fast suite on Python 3.11/3.12/3.13 with **`--cov-fail-under=85` scoped to eight modules** (`cli`, `common`, `clefs`, `comparison`, `semantic`, `syntax`, `parts`, `linting`). Keep changes to those modules covered by tests.
 
 Requires LilyPond 2.24.x (tested 2.24.4), installed at the OS level, not as a Python dependency. A monthly workflow re-runs the integration suite against a LilyPond development build (`continue-on-error`) as an early-warning signal.
 
@@ -40,7 +40,7 @@ Requires LilyPond 2.24.x (tested 2.24.4), installed at the OS level, not as a Py
 **`common.py`** is the contract layer everything else depends on:
 - `Result` / `Diagnostic` — the single output shape. `Result.to_dict()` emits the versioned JSON envelope (`schema_version`, `ok`, `command`, `inputs`, `artifacts`, `diagnostics`, `metadata`). Feature modules never print.
 - `WorkbenchError(message, code, exit_code)` — the only error channel. Exit codes are a public interface: **0** success, **1** completed with failing findings or tool failure, **2** invalid input/config or missing required tool, **130** interrupt. Use `exit_code=2` for input/config problems.
-- `run_process()` — the single gateway to every external executable, dispatching on the `LILYPOND_WORKBENCH_RUNNER` env var that `cli.main()` sets from the global `--runner` flag. The `container` backend hard-sandboxes (`--network=none`, `--read-only`, `--cap-drop=ALL`, source mounted read-only, host paths rewritten into declared mounts) and currently accepts only `lilypond`, so `--runner container` is restricted to the render/validate/lint/harmony commands. Never call `subprocess` directly from a feature module.
+- `run_process()` — the single gateway to every external executable, dispatching on the `LILYPOND_WORKBENCH_RUNNER` env var that `cli.main()` sets from the global `--runner` flag. The `container` backend hard-sandboxes (`--network=none`, `--read-only`, `--cap-drop=ALL`, source mounted read-only, host paths rewritten into declared mounts) and currently accepts only `lilypond`, so `--runner container` is restricted to `render`, `batch-render`, `validate`, `lint`, and `analyze-harmony`. Never call `subprocess` directly from a feature module.
 - `prepare_output` / `atomic_write` — refuse to clobber unless `force=True`, which is what backs every `--force` flag.
 
 **Analysis layering** (bottom-up; respect it, don't shortcut around it):
@@ -52,7 +52,7 @@ Requires LilyPond 2.24.x (tested 2.24.4), installed at the OS level, not as a Py
 
 **Versioned schemas.** Several independent version numbers, all part of the public surface: `RESULT_SCHEMA_VERSION` (JSON envelope), the parts-manifest schema (`parts.py` writes **v3** with `pitch_basis: concert|written` and still reads v1/v2, normalizing upward while preserving old behavior), the lint report schema, the semantic-index schema, the clef-analysis schema, and `evals/evals.json`. Keep JSON fields backward compatible within a major release; a manifest change needs migration notes and a normalization path for older versions.
 
-**Evals.** `evals/evals.json` maps each eval id to `pytest_nodes`, so evals are executable: `run_evals.py` shells out to pytest per eval and emits its own versioned JSON report. `tests/test_evals.py` validates the config.
+**Evals.** `evals/evals.json` maps each scenario id to `pytest_nodes`: `run_evals.py` shells out to pytest per scenario and emits its own versioned JSON report. The prompts and expected outcomes describe agent tasks; the runner does not invoke an agent or check every expected outcome. `tests/test_evals.py` validates the config.
 
 ## Conventions
 

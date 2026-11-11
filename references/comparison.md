@@ -54,6 +54,9 @@ source when you need to know what a variable actually contains after includes,
   transposed accidental is reported as written rather than respelled.
 - Grace notes and cue music appear in the index and in comparisons; they are
   flagged so they can be filtered.
+- Default `\afterGrace` notes are located within their main note, not at the
+  next note's onset. Explicit fractions and `afterGraceFraction` overrides
+  are not supported by this static index and are rejected rather than guessed.
 - Simultaneous voices are indexed in traversal order. Reordering two
   independent voices inside `<< >>` therefore reads as a difference.
 - python-ly cannot parse a `\repeat` that directly follows a `\tempo` mark and

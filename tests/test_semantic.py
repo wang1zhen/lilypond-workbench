@@ -57,7 +57,7 @@ def test_marks_cue_during_music_for_exclusion(tmp_path: Path) -> None:
     assert [event.cue for event in index.events] == [False, True, True, True, True]
 
 
-def test_indexes_simultaneous_chords_tuplets_repeats_and_ignores_grace(tmp_path: Path) -> None:
+def test_indexes_simultaneous_chords_tuplets_repeats_and_flags_grace(tmp_path: Path) -> None:
     source = tmp_path / "structures.ly"
     source.write_text(
         r"""music = \absolute {
@@ -84,5 +84,9 @@ def test_indexes_simultaneous_chords_tuplets_repeats_and_ignores_grace(tmp_path:
         Fraction(1, 2),
         Fraction(1, 2),
     ]
-    assert all(49 not in event.pitches for event in index.events)
+    grace = [event for event in index.events if event.grace]
+    assert [(event.kind, event.duration, event.pitches) for event in grace] == [
+        ("note", Fraction(0), (49,))
+    ]
+    assert all(49 not in event.pitches for event in index.events if not event.grace)
     assert any(marker.kind == "seam" and marker.value == "rehearsal" for marker in index.markers)

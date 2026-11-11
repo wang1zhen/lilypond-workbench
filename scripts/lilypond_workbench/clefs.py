@@ -65,7 +65,7 @@ class ClefAnalysis:
 
     def to_dict(self, index: SemanticIndex | None = None) -> dict[str, Any]:
         def position(offset: Fraction) -> dict[str, Any]:
-            return index.position(offset) if index is not None else {"offset": _fraction_text(offset)}
+            return index.position(offset) if index is not None else {"offset": str(offset)}
 
         return {
             "schema_version": self.schema_version,
@@ -73,7 +73,7 @@ class ClefAnalysis:
             "variable": self.variable,
             "instrument": self.instrument,
             "initial_clef": self.initial_clef,
-            "duration": _fraction_text(self.duration),
+            "duration": str(self.duration),
             "index_fingerprint": self.index_fingerprint,
             "changes": [
                 {
@@ -123,10 +123,6 @@ class _Window:
     current_cost: float
     target_cost: float
     source: SourceLocation
-
-
-def _fraction_text(value: Fraction) -> str:
-    return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
 
 
 def _ledger_lines(pitch: int, clef: str) -> int:
@@ -350,8 +346,8 @@ def analyze_clef_index(index: SemanticIndex, instrument: str, *, initial_clef: s
                     details={
                         "from": current,
                         "to": rule.target,
-                        "offset": _fraction_text(offset),
-                        "window_end": _fraction_text(window.end),
+                        "offset": str(offset),
+                        "window_end": str(window.end),
                     },
                 )
             )

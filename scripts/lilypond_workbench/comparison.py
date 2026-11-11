@@ -79,7 +79,7 @@ def _event_side(index: SemanticIndex, event: IndexedEvent) -> dict[str, Any]:
     return {
         "kind": event.kind,
         "pitches": _pitch_names(event),
-        "duration": _fraction_text(event.duration),
+        "duration": str(event.duration),
         "grace": event.grace,
         **position,
         "file": event.source.file,
@@ -97,10 +97,6 @@ def _marker_side(index: SemanticIndex, marker: SemanticMarker) -> dict[str, Any]
         "line": marker.source.line,
         "column": marker.source.column,
     }
-
-
-def _fraction_text(value: Fraction) -> str:
-    return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
 
 
 def _pitch_names(event: IndexedEvent) -> list[str]:
@@ -392,7 +388,7 @@ def _side_summary(path: Path, index: SemanticIndex) -> dict[str, Any]:
         "source": str(path),
         "variable": index.variable,
         "fingerprint": index.fingerprint,
-        "duration": _fraction_text(index.duration),
+        "duration": str(index.duration),
         "events": len(index.events),
         "markers": len(index.markers),
         "measures": len(index.measures),

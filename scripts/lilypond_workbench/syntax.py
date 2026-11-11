@@ -116,9 +116,7 @@ def extract_music_variables(text: str) -> list[MusicVariable]:
     masked = masked_source(text)
     variables: list[MusicVariable] = []
     for match in VARIABLE_RE.finditer(masked):
-        open_brace = masked.find("{", match.start(), match.end() + 1)
-        if open_brace < 0:
-            continue
+        open_brace = match.end() - 1  # VARIABLE_RE always ends at the opening brace
         close_brace = matching_brace(masked, open_brace)
         variables.append(
             MusicVariable(

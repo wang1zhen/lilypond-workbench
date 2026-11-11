@@ -6,6 +6,18 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Fixed
 
+- Invalid manifest range overrides and transpose pitches remain configuration
+  errors (exit 2) instead of becoming suppressible semantic-index findings.
+- Practical violin and viola range checks now match the documented G3–D7 and
+  C3–E6 boundaries; absolute range thresholds are unchanged.
+- Semantic indexing retains grace notes and chords with a zero duration and
+  `grace: true`, so comparisons detect their pitch changes without advancing
+  musical time.
+- Default `afterGrace` notes are positioned within the main note, so measure
+  scope checks no longer assign them to the next bar. Unsupported explicit
+  fractions and fraction overrides are rejected instead of misindexed.
+- Manifest range and transpose values are checked before source matching or
+  variable/index branches can bypass validation, including suppressed findings.
 - Parts manifests reject unsafe part IDs and output names or conflicting IDs.
   Generated paths cannot escape the output directory, even with `--force`.
 - Manifests written outside the source directory now retain a usable relative
@@ -27,6 +39,9 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Added
 
+- Focused regression tests for CLI dispatch, process contracts, manifest
+  validation, musical range boundaries, comparison, clefs, and parser fallback
+  diagnostics.
 - `index` reports the semantic index of a music variable: events with written
   pitch and accidental, markers, reconstructed measures, and source locations.
 - `diff` compares two scores by musical content instead of by text, locating

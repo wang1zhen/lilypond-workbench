@@ -325,11 +325,17 @@ LaTeX document generation.
   multiple MIDI files, analysis stops rather than guessing which one to use.
 - Part extraction deliberately stops when the shared source cannot be isolated
   safely; review the manifest before compiling parts.
+- Invalid manifest range overrides or transpose pitches are configuration errors
+  (exit 2), not suppressible lint findings. Practical violin and viola ranges
+  follow the G3–D7 and C3–E6 boundaries in `references/instruments.md`.
 - `index` and `diff` cover one music variable at a time and read written
   pitches. Transposed passages keep their written accidentals rather than being
   respelled, and a `\repeat` that directly follows a `\tempo` mark cannot be
   parsed by python-ly; that case is reported as a warning instead of being
   silently omitted.
+  Default `\afterGrace` positioning is supported, but explicit fractions and
+  `afterGraceFraction` overrides are rejected by the static index rather than
+  silently assigned the wrong time.
 - Automatic clef tracks never edit the score source. Existing explicit clefs
   are preserved, and reports should be reviewed before publication.
 - LilyPond input can contain Guile/Scheme and must be treated as executable

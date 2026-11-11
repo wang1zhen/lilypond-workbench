@@ -139,9 +139,13 @@ def _clef_config(part: dict[str, Any]) -> dict[str, str]:
 def _validate_basename(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise WorkbenchError(f"{label} must be a non-empty string", "MANIFEST_SCHEMA", exit_code=2)
-    if value in {".", ".."} or value.startswith(".") or any(sep in value for sep in ("/", "\\", "\x00")):
-        raise WorkbenchError(f"{label} must be a single filename, not a path: {value!r}", "MANIFEST_SCHEMA", exit_code=2)
-    if Path(value).is_absolute() or Path(value).name != value:
+    if (
+        value in {".", ".."}
+        or value.startswith(".")
+        or any(sep in value for sep in ("/", "\\", "\x00"))
+        or Path(value).is_absolute()
+        or Path(value).name != value
+    ):
         raise WorkbenchError(f"{label} must be a single filename, not a path: {value!r}", "MANIFEST_SCHEMA", exit_code=2)
     return value
 

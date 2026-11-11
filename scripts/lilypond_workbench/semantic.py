@@ -89,7 +89,7 @@ class SemanticIndex:
     def position(self, offset: Fraction) -> dict[str, Any]:
         measure = self.measure_at(offset)
         beat = (offset - measure.start) / measure.beat + 1
-        return {"offset": _fraction_text(offset), "measure": measure.number, "beat": _fraction_text(beat)}
+        return {"offset": str(offset), "measure": measure.number, "beat": str(beat)}
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -97,18 +97,18 @@ class SemanticIndex:
             "source": self.source,
             "variable": self.variable,
             "fingerprint": self.fingerprint,
-            "duration": _fraction_text(self.duration),
+            "duration": str(self.duration),
             "events": [
                 {
                     "kind": item.kind,
-                    "offset": _fraction_text(item.offset),
-                    "duration": _fraction_text(item.duration),
+                    "offset": str(item.offset),
+                    "duration": str(item.duration),
                     "pitches": [
                         pitch_label(value, alter)
                         for value, alter in zip(item.pitches, item.alters or (Fraction(0),) * len(item.pitches))
                     ],
                     "diatonic_pitches": list(item.pitches),
-                    "alters": [_fraction_text(alter) for alter in item.alters],
+                    "alters": [str(alter) for alter in item.alters],
                     "grace": item.grace,
                     "cue": item.cue,
                     "source": asdict(item.source),
@@ -118,7 +118,7 @@ class SemanticIndex:
             "markers": [
                 {
                     "kind": item.kind,
-                    "offset": _fraction_text(item.offset),
+                    "offset": str(item.offset),
                     "value": item.value,
                     "source": asdict(item.source),
                 }
@@ -127,10 +127,10 @@ class SemanticIndex:
             "measures": [
                 {
                     "number": item.number,
-                    "start": _fraction_text(item.start),
-                    "end": _fraction_text(item.end),
-                    "meter": _fraction_text(item.meter),
-                    "beat": _fraction_text(item.beat),
+                    "start": str(item.start),
+                    "end": str(item.end),
+                    "meter": str(item.meter),
+                    "beat": str(item.beat),
                     "complete": item.complete,
                 }
                 for item in self.measures
@@ -148,16 +148,6 @@ class _RawRecord:
     source: SourceLocation
     grace: bool = False
     alters: tuple[Fraction, ...] = ()
-
-
-def _fraction_text(value: Fraction) -> str:
-    return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
-
-
-def _scientific_pitch(diatonic: int) -> str:
-    letters = "CDEFGAB"
-    octave, note = divmod(diatonic, 7)
-    return f"{letters[note]}{octave}"
 
 
 _ACCIDENTAL_SIGNS = {
@@ -228,7 +218,7 @@ def _tempo_text(node: items.Tempo) -> str:
             pass
     metronome = [str(value) for value in node.tempo()]
     if metronome:
-        parts.append(f"{_fraction_text(Fraction(node.fraction()))}={'-'.join(metronome)}")
+        parts.append(f"{str(Fraction(node.fraction()))}={'-'.join(metronome)}")
     return " ".join(item for item in parts if item)
 
 
@@ -294,11 +284,12 @@ def _find_assignment(root: items.Document, variable: str) -> items.Assignment:
 
 
 class _EventCollector(music_event.Events):
-    def __init__(self) -> None:
+    def __init__(self, *, after_grace_fraction_overridden: bool = False) -> None:
         super().__init__()
         self.records: list[_RawRecord] = []
         self._pitch_shift = 0
         self._commands: set[tuple[str, str]] = set()
+        self._after_grace_fraction_overridden = after_grace_fraction_overridden
         # Dynamics and articulations are siblings of the durable they belong
         # to, and traversal reaches them after its time has advanced.
         self._last_onset = Fraction(0)
@@ -343,6 +334,29 @@ class _EventCollector(music_event.Events):
                 return time
             finally:
                 self._pitch_shift = previous
+        if isinstance(node, items.AfterGrace):
+            if len(node) < 2 or not isinstance(node[1], items.Grace):
+                raise WorkbenchError(
+                    "Malformed \\afterGrace: expected a main expression and a grace expression",
+                    "AFTER_GRACE_SHAPE",
+                    exit_code=2,
+                )
+            if isinstance(node[0], (items.Number, items.Scheme)):
+                raise WorkbenchError(
+                    "Static indexing does not support \\afterGrace with an explicit fraction",
+                    "AFTER_GRACE_EXPLICIT_FRACTION",
+                    exit_code=2,
+                )
+            if self._after_grace_fraction_overridden:
+                raise WorkbenchError(
+                    "Static indexing cannot evaluate a global afterGraceFraction override",
+                    "AFTER_GRACE_FRACTION_OVERRIDE",
+                    exit_code=2,
+                )
+            main_end = self.traverse(node[0], time, scaling)
+            grace_time = time + (main_end - time) * Fraction(3, 4)
+            self.traverse(node[1], grace_time, scaling)
+            return main_end
         if isinstance(node, items.UserCommand):
             name = node.name()
             if name == "mark":
@@ -366,7 +380,7 @@ class _EventCollector(music_event.Events):
                 for item in node.find(items.Note)
             )
             pitches = tuple(position for position, _alter in voiced)
-            if duration:
+            if duration or scaling == 0:
                 self._record(
                     "chord",
                     node,
@@ -380,7 +394,7 @@ class _EventCollector(music_event.Events):
             return time + duration
         if isinstance(node, items.Note):
             duration = Fraction(node.duration[0]) * Fraction(node.duration[1]) * scaling
-            if duration:
+            if duration or scaling == 0:
                 self._record(
                     "note",
                     node,
@@ -432,8 +446,26 @@ class _EventCollector(music_event.Events):
         return node.events(self, time, scaling)
 
 
-def _collect(assignment: items.Assignment) -> list[_RawRecord]:
-    collector = _EventCollector()
+def _after_grace_fraction_overridden(root: items.Document) -> bool:
+    """Detect a user override of LilyPond's global afterGraceFraction."""
+    for document in _walk_documents(root):
+        for node in document:
+            if isinstance(node, items.Assignment):
+                if str(node.name()) == "afterGraceFraction":
+                    return True
+            elif isinstance(node, items.Scheme):
+                tokens = [str(item.token) for item in node.find(items.SchemeItem)]
+                if "afterGraceFraction" in tokens and (
+                    "define" in tokens or "set!" in tokens
+                ):
+                    return True
+    return False
+
+
+def _collect(
+    assignment: items.Assignment, *, after_grace_fraction_overridden: bool = False
+) -> list[_RawRecord]:
+    collector = _EventCollector(after_grace_fraction_overridden=after_grace_fraction_overridden)
     collector.read(assignment.value(), Fraction(0), Fraction(1))
     return collector.records
 
@@ -567,8 +599,13 @@ def _cached_index(source_name: str, variable: str, fingerprint: str) -> Semantic
     absolute_root = _load_tree(source, absolute=True)
     original_assignment = _find_assignment(original_root, variable)
     absolute_assignment = _find_assignment(absolute_root, variable)
-    original_records = _collect(original_assignment)
-    absolute_records = _collect(absolute_assignment)
+    after_grace_override = _after_grace_fraction_overridden(original_root)
+    original_records = _collect(
+        original_assignment, after_grace_fraction_overridden=after_grace_override
+    )
+    absolute_records = _collect(
+        absolute_assignment, after_grace_fraction_overridden=after_grace_override
+    )
     records, mapped = _remap_locations(absolute_records, original_records)
     diagnostics: list[Diagnostic] = []
     if not mapped:

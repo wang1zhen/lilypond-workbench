@@ -25,16 +25,16 @@ _SEVERITY_ORDER = {"info": 0, "warning": 1, "error": 2}
 # Diatonic pitch positions use C4 == 28, matching semantic.py.  The practical
 # range is a review boundary; the absolute range is deliberately conservative.
 INSTRUMENT_RANGES: dict[str, dict[str, tuple[int, int]]] = {
-    "violin": {"practical": (24, 50), "absolute": (24, 52)},       # G3-D7 / G3-A7
-    "viola": {"practical": (21, 46), "absolute": (21, 47)},        # C3-E6 / C3-A6
+    "violin": {"practical": (25, 50), "absolute": (24, 52)},       # G3-D7 / F3-F7
+    "viola": {"practical": (21, 44), "absolute": (21, 47)},        # C3-E6 / C3-A6
     "cello": {"practical": (14, 42), "absolute": (14, 44)},        # C2-C6 / C2-E6
     "double-bass": {"practical": (16, 39), "absolute": (14, 42)},  # E2-G5 / C2-C6 written
     "flute": {"practical": (28, 49), "absolute": (27, 51)},        # C4-C7 / B3-E7
     "oboe": {"practical": (27, 47), "absolute": (27, 49)},         # B3-A6 / B3-C7
     "clarinet-bb": {"practical": (23, 49), "absolute": (23, 53)},  # E3-C7 / E3-G7 written
     "bassoon": {"practical": (13, 37), "absolute": (13, 39)},      # B1-E5 / B1-G5
-    "trumpet-bb": {"practical": (24, 42), "absolute": (24, 46)},  # F3-C6 / F3-E6 written
-    "horn-f": {"practical": (17, 42), "absolute": (13, 45)},      # F2-C6 / B1-D6 written
+    "trumpet-bb": {"practical": (24, 42), "absolute": (24, 46)},  # F3-C6 / F3-G6 written
+    "horn-f": {"practical": (17, 42), "absolute": (13, 45)},      # F2-C6 / B1-F6 written
     "trombone": {"practical": (16, 38), "absolute": (16, 41)},    # E2-F5 / E2-B5
     "piano": {"practical": (5, 56), "absolute": (5, 56)},         # A0-C8
 }
@@ -286,6 +286,8 @@ def _manifest_diagnostics(source: Path, manifest: dict[str, Any]) -> list[Diagno
                     diagnostic.details.setdefault("part", part_id)
                     diagnostics.append(diagnostic)
         except WorkbenchError as exc:
+            if exc.code == "MANIFEST_SCHEMA":
+                raise  # Invalid manifest values are config errors (exit 2), not suppressible findings.
             diagnostics.append(_diag("semantic.index-failed", "error", str(exc), file=str(source), details={"part": part_id}))
     return diagnostics
 
@@ -362,6 +364,11 @@ def lint_score(
         inputs.append(str(manifest_file))
         raw = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
         manifest = normalize_manifest(raw)
+        # Validate every part's config before any source match/variable/index branch:
+        # a source mismatch, broken source, or suppression must not hide invalid config.
+        for part in manifest["parts"]:
+            _ranges(part)
+            _transpose_shift(part.get("transpose"))
         declared_source = (manifest_file.parent / manifest["source"]).resolve()
         if declared_source != source:
             diagnostics.append(

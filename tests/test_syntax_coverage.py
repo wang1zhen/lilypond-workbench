@@ -106,9 +106,16 @@ def test_duration_checker_scales_nested_braces() -> None:
     assert not [item for item in issues if item.code == "BAR_DURATION"]
 
 
-def test_duration_checker_warns_about_an_incomplete_final_bar() -> None:
+def test_duration_checker_accepts_complete_bars_without_explicit_barlines() -> None:
     issues = check_measure_durations(
         "melody = \\absolute { \\time 4/4 c'2 d'2 c'1 }"
     )
+    assert not [item for item in issues if item.code == "FINAL_BAR_DURATION"]
+
+
+def test_duration_checker_warns_about_an_incomplete_final_bar() -> None:
+    issues = check_measure_durations(
+        "melody = \\absolute { \\time 4/4 c'2 d'2 c'1 c'2 }"
+    )
     assert [item.code for item in issues] == ["FINAL_BAR_DURATION"]
-    assert issues[0].details["actual"] == "2"
+    assert issues[0].details["actual"] == "1/2"

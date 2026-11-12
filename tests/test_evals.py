@@ -13,8 +13,8 @@ def _module():
     return module
 
 
-def test_eval_config_has_seven_executable_scenarios() -> None:
+def test_eval_config_has_eight_executable_scenarios() -> None:
     config = _module().load_config(ROOT / "evals" / "evals.json")
 
-    assert [item["id"] for item in config["evals"]] == list(range(1, 8))
+    assert [item["id"] for item in config["evals"]] == list(range(1, 9))
     assert all(item["pytest_nodes"] for item in config["evals"])

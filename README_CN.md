@@ -2,257 +2,98 @@
 
 [English](README.md)
 
-LilyPond Workbench 是一个面向 Codex 的 skill，同时也是一套确定性的命令行工具，
-用于创建、修改、诊断、分析、导入、排版和发布 LilyPond 乐谱。它把需要音乐判断的
-工作交给 agent，把校验、格式转换、分谱生成、和声分析和渲染等应当稳定复现的操作
-交给本地工具完成。
+面向 Codex 的 skill 与本地 LilyPond 工具集：创作和修改乐谱、导入文件、检查改动、
+生成分谱、分析和声，以及渲染和出版。音乐判断交给 agent，可重复的检查与构建交给 CLI。
 
-项目面向本机安装的 LilyPond 2.24 系列，并以 LilyPond 2.24.4 进行测试。Python
-环境及依赖完全由 [uv](https://docs.astral.sh/uv/) 管理。
+## 快速开始
 
-## 功能
+需要 **Python 3.11+**、[uv](https://docs.astral.sh/uv/) 和系统安装的 **LilyPond 2.24.x**
+（测试版本为 2.24.4）。导入需要 LilyPond 自带的转换工具；出版另需 `lilypond-book`、
+LuaLaTeX 和 `latexmk`。
 
-- 根据自然语言创建 `.ly` 乐谱。
-- 修改已有 LilyPond 源文件，同时保留变量、include、注释和项目结构。
-- 添加歌词、和弦标记、指法、上下两套不同指法、弓法、连音线、乐句连线和延音线。
-- 诊断 LilyPond 编译错误和小节时值问题。
-- 导入 MusicXML、压缩 MusicXML、MIDI 和 ABC，并整理转换后的 LilyPond 源码。
-- 通过版本化清单从共享的总谱源文件生成独立分谱。
-- 对相对音高、include、移调、连音组、反复和多声部建立书面音高语义索引，为
-  violin、viola 和 cello 推荐稳定的谱号切换，并可选择仅在生成分谱中应用。
-- 推断和弦名称、局部调性、转位和罗马数字，并生成供人工复核的 JSON 置信度报告。
-- 输出音乐变量的语义索引；按音乐内容比较两份乐谱，从而证明一次编辑只改动了预期
-  的部分。
-- 将单份或多份乐谱渲染为 PDF、PNG、SVG 或 PostScript。
-- 通过 `lilypond-book` 构建包含乐谱的 LuaLaTeX 文档。
-
-自然语言创作和音乐判断由 agent 完成；CLI 负责可重复、可验证的机械操作。
-
-## 环境要求
-
-| 依赖 | 说明 |
-| --- | --- |
-| Python 3.11 或更新版本 | 版本记录在 `.python-version` |
-| uv | 唯一支持的 Python 环境和依赖管理工具 |
-| LilyPond 2.24.x | 已在 2.24.4 上测试 |
-| `musicxml2ly`、`midi2ly`、`abc2ly`、`convert-ly` | 通常随 LilyPond 一同安装 |
-| `lilypond-book`、LuaLaTeX、`latexmk` | 仅构建 LaTeX 文档时需要 |
-
-LilyPond 应由操作系统或其他系统级包管理器安装，不属于 Python 依赖。
-
-## 初始化
-
-在仓库根目录运行：
+在仓库根目录运行，所有 Python 命令一律通过 uv：
 
 ```sh
 uv sync --group dev
 uv run python scripts/workbench.py doctor
-```
-
-`doctor` 会报告 uv、LilyPond、格式转换工具及可选 LaTeX 工具链的版本。缺少可选工具
-只会产生警告；使用 `doctor --strict` 可要求全部导入与出版工具均可用。
-
-如需让另一个项目发现本 skill，请把该目录放置或链接到目标项目的
-`.agents/skills/lilypond-workbench`。如需跨项目个人使用，则放到
-`~/.agents/skills/lilypond-workbench`。
-
-本仓库目录本身就是完整的 skill 包，`SKILL.md` 是 agent 的入口文件。
-
-## 使用 skill
-
-向 Codex 指定 `$lilypond-workbench`，并描述需要的音乐结果，不必把任务拆成一串
-LilyPond 命令。例如：
-
-```text
-使用 $lilypond-workbench 创作一首两页以内的 E 小调小提琴练习曲，
-在五线谱上下添加两套不同指法，检查每小节时值并输出 PDF。
-```
-
-```text
-使用 $lilypond-workbench 导入这份 MusicXML，清理转换结果，
-分析和弦并生成移调后的独立分谱。
-```
-
-```text
-使用 $lilypond-workbench 分析这份 LilyPond 日志，
-只修复导致编译失败和小节时值错误的源代码。
-```
-
-skill 会根据任务读取 `references/` 下对应的工作流，并使用 CLI 完成可复现的校验
-和产物生成。
-
-## CLI 快速开始
-
-所有 Python 命令都必须通过 uv 运行：
-
-```sh
-uv run python scripts/workbench.py --help
-```
-
-从模板创建并渲染乐谱：
-
-```sh
 uv run python scripts/workbench.py new piano my-score.ly
 uv run python scripts/workbench.py validate my-score.ly
 uv run python scripts/workbench.py lint my-score.ly --output my-score.lint.json
 uv run python scripts/workbench.py render my-score.ly --output-dir build/score
 ```
 
-导入并清理交换格式文件：
+`doctor` 检查工具可用性；`doctor --strict` 要求导入与出版工具全部可用。
+各命令的完整参数见 `COMMAND --help`。
 
-```sh
-uv run python scripts/workbench.py import-score input.musicxml \
-  --output imported.ly
-uv run python scripts/workbench.py clean imported.ly \
-  --output imported-clean.ly
-```
+## 作为 skill 使用
 
-并发批量渲染：
+把本仓库放置或链接到项目的 `.agents/skills/lilypond-workbench`；个人跨项目使用时，
+放到 `~/.agents/skills/lilypond-workbench`。仓库本身就是 skill 包，入口为
+[SKILL.md](SKILL.md)。
 
-```sh
-uv run python scripts/workbench.py batch-render scores \
-  --recursive --jobs 4 --output-dir build/scores
-```
+向 Codex 描述音乐目标即可：
 
-生成独立分谱：
-
-```sh
-uv run python scripts/workbench.py parts-manifest full-score.ly \
-  --output parts.yaml
-# 先检查名称、谱号、移调设置和所有 needs_review 项。
-uv run python scripts/workbench.py extract-parts parts.yaml --compile
-```
-
-在不修改源文件的前提下分析弦乐分谱谱号：
-
-```sh
-uv run python scripts/workbench.py analyze-clefs full-score.ly \
-  --instrument cello --variable celloMusic \
-  --output cello.clefs.json
-```
-
-新生成的分谱清单使用 schema v3，并声明 `pitch_basis: concert|written`。保持
-`clef.policy: suggest` 只生成带源码定位的报告；改为 `auto` 才会给该分谱添加独立
-谱号轨。schema v1 与 v2 仍可读取，并保持原有行为。
-清单的 `source` 路径以清单文件所在目录为基准，即使清单生成在其他目录也能使用。
-分谱 ID 必须是唯一、非空的文件名，不允许路径或点开头的名称；`_shared` 为保留名。
-即使使用 `--force`，生成文件也不能越出输出目录。
-自定义 `output_name` 也必须是非空文件名，不允许路径分隔符或点开头的名称。
-
-输出音乐变量的语义索引：
-
-```sh
-uv run python scripts/workbench.py index full-score.ly \
-  --variable violinMusic --output violin.index.json
-```
-
-按音乐内容而非文本比较两份乐谱：
-
-```sh
-uv run python scripts/workbench.py diff before.ly after.ly \
-  --variable violinMusic --output violin.diff.json
-```
-
-`diff` 比较双方的语义索引，因此重新排版、增删注释、以及在相对音高与绝对音高之间
-改写都不会产生差异；而音高、时值、起始时间、调号、谱号、力度、演奏记号、速度或反复的改动，
-都会连同小节号、拍位和源码位置一并报告。加 `--expect-measures 37-40` 可在指定小节
-之外出现改动时失败；加 `--fail-on-change` 则要求音乐完全未变。变量被改名时使用
-`--new-variable`。
-移动标记的生效位置也属于音乐变化；移动前后的小节都必须处于允许修改的范围内。
-
-分析和声：
-
-```sh
-uv run python scripts/workbench.py analyze-harmony progression.ly \
-  --key C --output harmony.ily --report harmony.analysis.json
-```
-
-构建包含乐谱的文档：
-
-```sh
-uv run python scripts/workbench.py build-document article.lytex \
-  --output-dir build/document
-```
-
-当结果需要交给另一个程序或 agent 步骤处理时，可对支持的命令添加 `--json`。
-
-所有 JSON 命令响应都使用带版本的 envelope，字段固定为 `schema_version`、`ok`、
-`command`、`inputs`、`artifacts`、`diagnostics` 和 `metadata`。退出码 0 表示成功，
-1 表示检查发现失败项或外部工具失败，2 表示输入/配置无效或缺少必需工具，130 表示
-被中断。`lint` 报告在 `metadata.report` 及可选报告文件中使用独立 schema 版本。
+> 使用 $lilypond-workbench 创作一首 E 小调小提琴练习曲，添加两套可选指法，
+> 检查每小节时值并渲染 PDF。
 
 ## 命令一览
 
+运行方式：`uv run python scripts/workbench.py COMMAND`。
+
 | 命令 | 用途 |
 | --- | --- |
-| `doctor` | 检查本地工具和版本 |
-| `new` | 复制内置乐谱模板 |
-| `render` | 编译单个 `.ly` 文件 |
-| `batch-render` | 批量、可并发地编译乐谱 |
-| `validate` | 检查时值并进行不输出页面的 LilyPond 编译 |
-| `lint` | 检查结构、音域、谱号、移调元数据和分谱一致性 |
-| `parse-log` | 把 LilyPond 输出解析为结构化诊断 |
-| `import-score` | 将 MusicXML、MIDI 或 ABC 转换为 LilyPond |
-| `clean` | 统一 LilyPond 版本声明并格式化源码 |
-| `parts-manifest` | 发现分谱候选并生成可审阅的清单 |
-| `extract-parts` | 根据审阅后的清单生成分谱 wrapper |
-| `analyze-harmony` | 生成和弦、罗马数字 include 及分析报告 |
-| `analyze-clefs` | 从语义索引推荐 violin、viola 或 cello 的谱号切换 |
-| `index` | 输出单个音乐变量的语义索引 |
-| `diff` | 按音乐内容比较两份乐谱并定位每处差异 |
-| `build-document` | 运行 `lilypond-book` 和 LuaLaTeX |
+| `doctor` | 检查工具和版本 |
+| `new` | 从模板创建乐谱 |
+| `render` | 编译为 PDF、PNG、SVG 或 PostScript |
+| `batch-render` | 批量编译，可并行 |
+| `validate` | 检查时值并进行不输出页面的编译 |
+| `lint` | 检查结构、音域、谱号和分谱一致性 |
+| `parse-log` | 将编译日志转为结构化诊断 |
+| `import-score` | 导入 MusicXML/MXL、MIDI 或 ABC |
+| `clean` | 统一版本声明和格式 |
+| `parts-manifest` | 发现声部并生成待复核清单 |
+| `extract-parts` | 生成分谱 wrapper，可编译 PDF |
+| `analyze-harmony` | 推断和弦、调性和罗马数字，输出置信度报告 |
+| `analyze-clefs` | 推荐 violin、viola、cello 谱号切换 |
+| `index` | 输出一个音乐变量的语义索引 |
+| `diff` | 比较音乐内容并定位变化 |
+| `build-document` | 通过 lilypond-book 和 LuaLaTeX 出版 |
 
-可通过 `uv run python scripts/workbench.py COMMAND --help` 查看完整参数。
+### 常用工作流
 
-## 内置模板
-
-`new` 支持以下模板名称：
-
-- `single-staff`、`piano`、`lead-sheet`、`satb`
-- `string-quartet`、`orchestra`、`parts-project`
-- `guitar`、`ukulele`、`bass`、`drum-kit`、`annotations`
-
-通用样式位于 `assets/styles/house-style.ily`，文档模板位于
-`assets/documents/article.lytex`。
-
-## 项目结构
-
-```text
-.
-├── SKILL.md                 # Codex 加载的精简指令
-├── agents/openai.yaml       # skill 界面元数据
-├── assets/                  # 乐谱和文档模板
-├── references/              # 按任务拆分的 agent 工作流
-├── scripts/
-│   ├── workbench.py         # CLI 入口
-│   └── lilypond_workbench/  # 确定性工具实现
-├── tests/                   # 单元测试和工具链集成测试
-└── evals/evals.json         # 任务场景与回归测试的映射
-```
-
-## 开发约定
-
-依赖修改和 Python 程序运行一律使用 uv：
+导入并清理：
 
 ```sh
-uv add PACKAGE
-uv remove PACKAGE
-uv add --dev PACKAGE
-uv run pytest
+uv run python scripts/workbench.py import-score input.musicxml --output imported.ly
+uv run python scripts/workbench.py clean imported.ly --output imported-clean.ly
 ```
 
-运行映射到 7 个任务场景的确定性回归检查：
+生成分谱；提取前先复核名称、移调及 `needs_review` 项：
 
 ```sh
-uv run python scripts/run_evals.py
+uv run python scripts/workbench.py parts-manifest full-score.ly --output parts.yaml
+uv run python scripts/workbench.py extract-parts parts.yaml --compile
 ```
 
-运行器只执行场景的 `pytest_nodes`，不会把 prompt 提交给 agent。prompt 与
-`expected` 描述的是更广泛的任务目标；测试通过不能证明页数限制、可演奏性、agent
-编辑质量或所有预期结果均已满足。例如，和声场景当前测试的是 LilyPond 输入，
-并非其描述的 MusicXML 工作流。
+检查编辑范围：
 
-处理不可信 LilyPond 输入时，构建隔离 runner，并把输出放在源目录之外：
+```sh
+uv run python scripts/workbench.py diff before.ly after.ly \
+  --variable violinMusic --expect-measures 37-40 --output changes.json
+```
+
+`diff` 忽略格式和注释。`--fail-on-change` 要求音乐完全未变；变量改名后使用
+`--new-variable`。事件和标记移动时，新旧小节都必须位于允许修改的范围内。
+
+自动化调用可加 `--json`。响应字段为 `schema_version`、`ok`、`command`、`inputs`、
+`artifacts`、`diagnostics`、`metadata`。
+退出码：**0** 成功；**1** 检查失败或工具失败；**2** 输入/配置无效或缺少工具；
+**130** 中断。
+
+## 安全与限制
+
+**LilyPond 源码能执行 Guile/Scheme，不要在宿主机直接编译不可信文件。**
+支持的命令可使用隔离 runner，输出必须位于源目录之外：
 
 ```sh
 docker build -t localhost/lilypond-workbench:2.24.4 -f containers/Dockerfile .
@@ -260,50 +101,53 @@ uv run python scripts/workbench.py --runner container render score.ly \
   --output-dir /tmp/lilypond-output
 ```
 
-内置镜像仅支持 Linux amd64。ARM 主机需要 amd64 模拟支持，并使用
-`docker build --platform linux/amd64`，不支持原生 ARM 构建。下载文件会在解压前
-校验固定的 SHA256；覆盖构建参数 `LILYPOND_VERSION` 时，必须同时提供独立核实的
-对应版本 Linux x86_64 压缩包摘要 `LILYPOND_SHA256`。
-容器 runner 仅支持 `render`、`batch-render`、`validate`、`lint` 和
-`analyze-harmony`，并非所有 CLI 命令。
+- 镜像仅支持 **Linux amd64**。ARM 主机需 amd64 模拟支持，并使用
+  `docker build --platform linux/amd64`。覆盖 `LILYPOND_VERSION` 时，必须同时提供
+  核实过的 `LILYPOND_SHA256`；下载会在解压前校验。
+- 容器模式仅支持 `render`、`batch-render`、`validate`、`lint`、`analyze-harmony`，
+  不是所有 CLI 命令的通用沙箱。
+- `--force`、`--in-place` 会覆盖文件，使用前确认目标。
+- 导入结果是草稿。和声分析面向十二平均律的传统、流行与爵士语汇；低置信度和弦只保留
+  在 JSON 中，不写入 include。`--score-index` 只能选择输入文件直接声明的非嵌套 score；
+  MIDI 输出不明确时会拒绝分析。
+- 分谱编译前需人工复核。清单使用 schema v3，兼容读取 v1/v2；`source` 相对清单目录。
+  ID 和 `output_name` 必须是安全文件名，ID 不可重复，`_shared` 为保留名。
+  非法音域或移调配置会报配置错误，不能通过 suppression 隐藏。
+- 含 include 或 `\cadenzaOn` 的源码会将静态时长分析交给编译器验证；
+  静态检查通过本身不能证明乐谱正确。
+- `index`、`diff` **每次处理一个变量**，使用书面音高，不重新拼写移调临时记号。
+  紧接 `\tempo` 的 `\repeat` 会触发解析器限制警告。支持字面时值的 `\after`
+  力度/演奏记号及默认 `\afterGrace`；其他 `\after` 形式、afterGrace 显式比例和
+  `afterGraceFraction` 覆盖会被拒绝。
+- 谱号建议不会修改源文件，已有显式谱号保持优先。
 
-不要手动修改 `pyproject.toml` 或 `uv.lock` 中的依赖列表，也不要绕过 `uv run`
-直接调用 `python`、`pytest` 或项目脚本。
+## 指南与模板
 
-当系统没有安装 LilyPond 或 LaTeX 工具链时，只运行快速测试：
+任务指南：[语义比较](references/comparison.md)、[诊断](references/diagnostics.md)、
+[导入](references/imports.md)、[分谱](references/parts.md)、
+[谱号与音域](references/instruments.md)、[和声](references/harmony.md)、
+[演奏标记](references/annotations.md)、[排版](references/engraving.md)、
+[lint](references/linting.md)、[LaTeX](references/latex.md)。
+
+`new` 模板：`single-staff`、`piano`、`lead-sheet`、`satb`、`string-quartet`、
+`orchestra`、`parts-project`、`guitar`、`ukulele`、`bass`、`drum-kit`、`annotations`。
+通用样式在 `assets/styles/house-style.ily`，文档模板在 `assets/documents/article.lytex`。
+
+## 开发
+
+参见 [CONTRIBUTING.md](CONTRIBUTING.md)。依赖变更使用 `uv add`、`uv remove`、
+`uv add --dev`，不要手动编辑依赖列表或 `uv.lock`。
 
 ```sh
-uv run pytest -m "not integration"
+uv run pytest -m "not integration"          # 快速测试，无需系统工具链
+uv run pytest                               # 全量测试，需要 LilyPond 和 LaTeX
+uv run python scripts/validate_skill.py .
+uv run python scripts/run_evals.py           # 全部 8 个回归场景
+uv run python scripts/run_evals.py --id 8    # 时长与诊断回归
 ```
 
-在安装完整工具链的机器上运行全部测试：
+Eval 运行映射的 pytest 测试，**不会执行 agent prompt**，不能据此证明所有任务目标、
+页数、可演奏性或 agent 编辑质量。
 
-```sh
-uv run pytest
-```
-
-完整测试会编译所有内置乐谱模板，并覆盖格式导入、批量渲染、错误检测、分谱生成、
-和声分析和 LaTeX 文档构建。
-
-## 重要行为与限制
-
-- 格式转换结果始终应视为草稿。MusicXML 布局、MIDI 量化与等音拼写、ABC 方言
-  细节都需要人工进行音乐性复核。
-- 和声分析面向十二平均律下的传统功能和声、流行与爵士语汇。低置信度结果不会
-  写入 LilyPond include，但会保留在 JSON 中供复核。
-  LilyPond 输入的 `--score-index` 只选择源文件中直接声明的 score，不支持选择嵌套在
-  另一个 score 内的 score，也不能选择 include 中隐藏的 score；如果编译仍产生多个
-  MIDI 文件，分析会停止，而不是猜测选择。
-- 当共享总谱无法安全拆分时，分谱工具会主动停止；编译前必须检查 manifest。
-- 清单中的非法音域覆盖配置或移调音高属于配置错误（退出码 2），不能用 lint
-  suppression 隐藏。小提琴与中提琴的实用音域分别遵循 `references/instruments.md`
-  中的 G3–D7 与 C3–E6 边界。
-- `index` 与 `diff` 每次只处理一个音乐变量，读取的是书面音高。移调段落保留其书面
-  临时记号而不做等音重写；紧接在 `\tempo` 之后的 `\repeat` 无法被 python-ly 解析，
-  该情况会以警告报告，而不是被静默忽略。
-  静态索引支持默认的 `\afterGrace` 时间定位；显式比例参数及 `afterGraceFraction`
-  覆盖暂不支持，会明确拒绝，而不是静默使用错误时间。
-- 自动谱号轨不会修改总谱源文件；已有显式谱号会被保留，出版前必须复核分析报告。
-- LilyPond 文件可以嵌入 Guile/Scheme，应当把输入视作可执行代码。不可信乐谱
-  只能在适当隔离的环境中编译。
-- `--force` 和 `--in-place` 会覆盖文件，使用前必须确认目标路径。
+目录速览：`scripts/lilypond_workbench/` 为 CLI 实现，`tests/` 为测试与用例，
+`evals/evals.json` 为回归场景映射，`references/` 为按任务拆分的指南。

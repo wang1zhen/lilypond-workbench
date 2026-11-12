@@ -6,6 +6,17 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Fixed
 
+- Empty chords no longer inherit elapsed time from the preceding event, and their
+  attached dynamics remain at the current position.
+- Literal-duration `after` dynamics and articulations are indexed relative to the
+  main music without advancing its time; postfix dynamics are no longer lost.
+- Manifest lint resolves variables through includes instead of checking only the
+  entry file. Direct score and include-only entries no longer require local variables.
+- Compiler version errors are classified as `VERSION_MISMATCH`, not missing
+  includes; fatal file summaries remain errors without inventing an include failure.
+- Static duration checks omit relative/fixed/transpose pitch arguments and accept
+  complete multi-bar segments. Includes and free-meter sources explicitly defer
+  duration analysis to the compiler rather than emitting unreliable bar warnings.
 - Invalid manifest range overrides and transpose pitches remain configuration
   errors (exit 2) instead of becoming suppressible semantic-index findings.
 - Practical violin and viola range checks now match the documented G3–D7 and
@@ -39,6 +50,8 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Added
 
+- Executable regression scenario for the scores-project report, including exact
+  semantic assertions and real LilyPond duration/bar-check comparisons.
 - Focused regression tests for CLI dispatch, process contracts, manifest
   validation, musical range boundaries, comparison, clefs, and parser fallback
   diagnostics.
@@ -67,6 +80,10 @@ All notable changes follow Keep a Changelog. Versions use Semantic Versioning.
 
 ### Changed
 
+- Shortened both READMEs around setup, commands, workflows, and safety; detailed
+  guidance stays in the task references.
+- Moved the scores regression inputs into `tests/fixtures` and removed the
+  original report directory while retaining executable regression coverage.
 - CI and container builds verify pinned LilyPond archive SHA256 hashes before
   extraction. The container explicitly requires amd64; version overrides also
   require the matching archive checksum.

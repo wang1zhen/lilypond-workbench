@@ -47,6 +47,25 @@
       "prompt": "分析弦乐总谱中 violin、viola 和 cello 的谱号使用，保留总谱源文件，为分谱生成稳定且不频繁切换的自动谱号轨。",
       "expected": ["semantic written-pitch index", "source-located clef reports", "stable clef hysteresis", "successfully compiled parts"],
       "pytest_nodes": ["tests/test_integration.py::test_automatic_cello_clef_track_compiles"]
+    },
+    {
+      "id": 8,
+      "prompt": "回归 scores 项目实测问题：修复空和弦与 \\after 的语义时值索引，并校正 include-only 总谱的 manifest 变量解析、编译器版本错误分类和自由节拍/静态时值检查。",
+      "expected": [
+        "empty chords take no time and keep attached dynamics at their correct onset",
+        "\\after controls are delayed without advancing the main note onset or duration",
+        "indexed durations match LilyPond compiler output",
+        "include-only part manifests resolve variables through nested includes",
+        "compiler version errors are distinguished from missing includes",
+        "static duration checks degrade on include and cadenzaOn instead of false warnings"
+      ],
+      "pytest_nodes": [
+        "tests/test_scores_regressions.py",
+        "tests/test_scores_regressions_integration.py",
+        "tests/test_include_manifest.py",
+        "tests/test_diagnostics_regressions.py",
+        "tests/test_static_regressions.py"
+      ]
     }
   ]
 }

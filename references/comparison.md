@@ -57,6 +57,9 @@ source when you need to know what a variable actually contains after includes,
 - Default `\afterGrace` notes are located within their main note, not at the
   next note's onset. Explicit fractions and `afterGraceFraction` overrides
   are not supported by this static index and are rejected rather than guessed.
+- Empty chords take no time but retain attached markers. Literal-duration
+  `\after` dynamics/articulations are placed relative to the main music;
+  unsupported control expressions are rejected instead of advancing time.
 - Simultaneous voices are indexed in traversal order. Reordering two
   independent voices inside `<< >>` therefore reads as a difference.
 - python-ly cannot parse a `\repeat` that directly follows a `\tempo` mark and

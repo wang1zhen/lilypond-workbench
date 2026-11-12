@@ -319,9 +319,91 @@ class _EventCollector(music_event.Events):
             )
         )
 
+    def _traverse_sequence(self, node: items.MusicList, time: Fraction, scaling: Fraction) -> Fraction:
+        children = list(node)
+        index = 0
+        while index < len(children):
+            child = children[index]
+            if isinstance(child, items.Command) and str(child.token) == "\\after":
+                index, time = self._traverse_after_run(children, index, time, scaling)
+            else:
+                time = self.traverse(child, time, scaling)
+                index += 1
+        return time
+
+    def _traverse_after_run(
+        self, children: list[items.Item], index: int, time: Fraction, scaling: Fraction
+    ) -> tuple[int, Fraction]:
+        """Handle the flat ``\\after duration control ... main`` run python-ly produces.
+
+        Each control is delayed relative to the main music's onset and does not
+        advance the main time; consecutive ``\\after`` groups share that onset.
+        """
+        controls: list[tuple[Fraction, items.Item]] = []
+        while (
+            index < len(children)
+            and isinstance(children[index], items.Command)
+            and str(children[index].token) == "\\after"
+        ):
+            if index + 2 >= len(children):
+                raise WorkbenchError(
+                    "Malformed \\after: expected a duration and a control expression",
+                    "AFTER_SHAPE",
+                    exit_code=2,
+                )
+            controls.append((_after_delay(children[index + 1]), children[index + 2]))
+            index += 3
+        if index >= len(children):
+            raise WorkbenchError(
+                "Malformed \\after: no main music follows the delayed controls",
+                "AFTER_SHAPE",
+                exit_code=2,
+            )
+        for delay, control in controls:
+            self._record_after_control(control, time + delay * scaling)
+        return index + 1, self.traverse(children[index], time, scaling)
+
+    def _record_after_control(self, node: items.Item, offset: Fraction) -> None:
+        if isinstance(node, (items.Dynamic, items.Articulation)):
+            self._record(
+                "dynamic" if isinstance(node, items.Dynamic) else "articulation",
+                node,
+                offset,
+                value=str(node.token).lstrip("\\"),
+            )
+            return
+        found = False
+        if isinstance(node, items.Postfix):
+            for child in (*node.find(items.Articulation), *node.find(items.Dynamic)):
+                found = True
+                self._record(
+                    "dynamic" if isinstance(child, items.Dynamic) else "articulation",
+                    child,
+                    offset,
+                    value=str(child.token).lstrip("\\"),
+                )
+        if found:
+            return
+        raise WorkbenchError(
+            "Static indexing cannot place this \\after expression; only dynamics and articulations are supported",
+            "AFTER_CONTROL_UNSUPPORTED",
+            exit_code=2,
+        )
+
     def traverse(self, node: items.Item, time: Fraction, scaling: Fraction) -> Fraction:
         time = Fraction(time)
         scaling = Fraction(scaling)
+        if isinstance(node, items.MusicList):
+            if not node.simultaneous:
+                return self._traverse_sequence(node, time, scaling)
+            if any(
+                isinstance(child, items.Command) and str(child.token) == "\\after" for child in node
+            ):
+                raise WorkbenchError(
+                    "Static indexing cannot place \\after directly inside simultaneous music",
+                    "AFTER_CONTROL_UNSUPPORTED",
+                    exit_code=2,
+                )
         if isinstance(node, items.Transpose):
             notes = [item for item in node if isinstance(item, items.Note)]
             music = [item for item in node if isinstance(item, items.Music)]
@@ -374,11 +456,16 @@ class _EventCollector(music_event.Events):
             finally:
                 self._commands.remove(key)
         if isinstance(node, items.Chord):
-            duration = Fraction(node.duration[0]) * Fraction(node.duration[1]) * scaling
             voiced = sorted(
                 (_pitch_position(item.pitch) + self._pitch_shift, _alter_of(item.pitch))
                 for item in node.find(items.Note)
             )
+            if not voiced:
+                # LilyPond gives <> no duration even though python-ly copies the
+                # preceding one; attached dynamics still belong at this instant.
+                self._last_onset = time
+                return time
+            duration = Fraction(node.duration[0]) * Fraction(node.duration[1]) * scaling
             pitches = tuple(position for position, _alter in voiced)
             if duration or scaling == 0:
                 self._record(
@@ -429,6 +516,8 @@ class _EventCollector(music_event.Events):
         elif isinstance(node, items.Postfix):
             for child in node.find(items.Articulation):
                 self._record("articulation", child, self._last_onset, value=str(child.token).lstrip("\\"))
+            for child in node.find(items.Dynamic):
+                self._record("dynamic", child, self._last_onset, value=str(child.token).lstrip("\\"))
         elif isinstance(node, items.KeySignature):
             self._record("key", node, time, value=_key_name(node))
         elif isinstance(node, items.Tempo):
@@ -444,6 +533,16 @@ class _EventCollector(music_event.Events):
         elif isinstance(node, items.Command) and str(node.token) in {"\\mark", "\\bar"}:
             self._record("seam", node, time, value="rehearsal" if str(node.token) == "\\mark" else "barline")
         return node.events(self, time, scaling)
+
+
+def _after_delay(node: items.Item) -> Fraction:
+    if isinstance(node, items.Unpitched):
+        return Fraction(node.duration[0]) * Fraction(node.duration[1])
+    raise WorkbenchError(
+        "Static indexing only supports a literal duration on \\after",
+        "AFTER_DURATION_UNSUPPORTED",
+        exit_code=2,
+    )
 
 
 def _after_grace_fraction_overridden(root: items.Document) -> bool:

@@ -2,297 +2,101 @@
 
 [中文说明](README_CN.md)
 
-LilyPond Workbench is a Codex skill and a deterministic command-line toolkit
-for creating, editing, diagnosing, analyzing, importing, engraving, and
-publishing LilyPond scores. It combines an agent-facing workflow with local
-tools that make repeatable operations—validation, conversion, part extraction,
-harmonic analysis, and rendering—reliable and scriptable.
+A Codex skill and local CLI for LilyPond scores: create and edit music, import
+files, check changes, extract parts, analyze harmony, and render or publish.
+The agent handles musical judgment; the CLI handles repeatable checks and builds.
 
-The project targets the locally installed LilyPond 2.24 series and is tested
-with LilyPond 2.24.4. Its Python environment and dependencies are managed
-exclusively by [uv](https://docs.astral.sh/uv/).
+## Quick start
 
-## What it can do
+Requires **Python 3.11+**, [uv](https://docs.astral.sh/uv/), and system-installed
+**LilyPond 2.24.x** (tested with 2.24.4). LilyPond's converters are needed for
+imports; `lilypond-book`, LuaLaTeX, and `latexmk` are optional publishing tools.
 
-- Create `.ly` scores from natural-language musical instructions.
-- Make semantic edits to existing LilyPond sources while preserving reusable
-  variables, includes, comments, and project structure.
-- Add lyrics, chord symbols, fingerings, multiple directed fingering systems,
-  bowings, slurs, phrasing slurs, and ties.
-- Diagnose LilyPond compilation failures and measure-duration problems.
-- Import MusicXML, compressed MusicXML, MIDI, and ABC, then normalize the
-  generated LilyPond source for further review.
-- Extract independent parts from a shared full-score source using a versioned
-  manifest.
-- Semantically index written pitches across relative music, includes,
-  transposition, tuplets, repeats, and simultaneous voices; recommend stable
-  violin, viola, and cello clef changes and optionally apply them to parts.
-- Infer chord symbols, local keys, inversions, and Roman numerals, with a JSON
-  confidence report for human review.
-- Report the semantic index of a music variable, and compare two scores by
-  musical content so an edit can be shown to have changed only what was
-  intended.
-- Render one score or batch-render a directory to PDF, PNG, SVG, or PostScript.
-- Build LuaLaTeX documents containing LilyPond notation through
-  `lilypond-book`.
-
-Musical creation and judgment remain agent-driven. The CLI handles operations
-that should be deterministic and verifiable.
-
-## Requirements
-
-| Requirement | Notes |
-| --- | --- |
-| Python 3.11 or newer | Selected by `.python-version` |
-| uv | The only supported Python environment and dependency manager |
-| LilyPond 2.24.x | Tested with 2.24.4 |
-| `musicxml2ly`, `midi2ly`, `abc2ly`, `convert-ly` | Normally installed with LilyPond |
-| `lilypond-book`, LuaLaTeX, `latexmk` | Required only for LaTeX document builds |
-
-LilyPond must be installed by the operating system or another system-level
-package manager; it is not a Python dependency.
-
-## Setup
-
-From the repository root:
+From the repository root, run all Python commands through uv:
 
 ```sh
 uv sync --group dev
 uv run python scripts/workbench.py doctor
-```
-
-`doctor` reports the versions of uv, LilyPond, its converters, and the optional
-LaTeX toolchain. Missing optional tools are warnings; use `doctor --strict` to
-require every import and publishing executable.
-
-To make the repository discoverable from another project, place or symlink it
-at `.agents/skills/lilypond-workbench` in that repository. For personal use
-across repositories, use `~/.agents/skills/lilypond-workbench`.
-
-The directory itself is the skill package; `SKILL.md` is its agent entry point.
-
-## Using the skill
-
-Ask Codex to use `$lilypond-workbench` and describe the musical result rather
-than a sequence of LilyPond commands. For example:
-
-```text
-Use $lilypond-workbench to create a two-page violin étude in E minor,
-add two alternative fingering systems above and below the staff,
-validate the measures, and render a PDF.
-```
-
-```text
-Use $lilypond-workbench to import this MusicXML file, clean the result,
-infer chord symbols, and generate separate transposed parts.
-```
-
-```text
-Use $lilypond-workbench to diagnose this LilyPond log and repair only the
-source lines responsible for the compilation and bar-length errors.
-```
-
-The skill routes specialized work to the references under `references/` and
-uses the CLI for reproducible checks and output generation.
-
-## CLI quick start
-
-All Python commands must run through uv:
-
-```sh
-uv run python scripts/workbench.py --help
-```
-
-Create and render a score from a bundled template:
-
-```sh
 uv run python scripts/workbench.py new piano my-score.ly
 uv run python scripts/workbench.py validate my-score.ly
 uv run python scripts/workbench.py lint my-score.ly --output my-score.lint.json
 uv run python scripts/workbench.py render my-score.ly --output-dir build/score
 ```
 
-Import and clean an interchange file:
+`doctor` reports available tools; `doctor --strict` requires every import and
+publishing executable. Use `COMMAND --help` for options.
 
-```sh
-uv run python scripts/workbench.py import-score input.musicxml \
-  --output imported.ly
-uv run python scripts/workbench.py clean imported.ly \
-  --output imported-clean.ly
-```
+## Use as a skill
 
-Batch-render scores concurrently:
+Place or symlink this repository at `.agents/skills/lilypond-workbench` in a
+project, or `~/.agents/skills/lilypond-workbench` for personal use. The repository
+itself is the skill package; [SKILL.md](SKILL.md) is its entry point.
 
-```sh
-uv run python scripts/workbench.py batch-render scores \
-  --recursive --jobs 4 --output-dir build/scores
-```
+Describe the musical result to Codex:
 
-Generate independent parts:
+> Use $lilypond-workbench to create a violin étude in E minor, add two alternative
+> fingering systems, validate the measures, and render a PDF.
 
-```sh
-uv run python scripts/workbench.py parts-manifest full-score.ly \
-  --output parts.yaml
-# Review names, clefs, transpositions, and any needs_review entries first.
-uv run python scripts/workbench.py extract-parts parts.yaml --compile
-```
+## Commands
 
-Analyze a string part's clefs without modifying it:
-
-```sh
-uv run python scripts/workbench.py analyze-clefs full-score.ly \
-  --instrument cello --variable celloMusic \
-  --output cello.clefs.json
-```
-
-New parts manifests use schema v3 and declare `pitch_basis: concert|written`.
-Leave `clef.policy` at `suggest` to produce
-a source-located report, or set it to `auto` to add a generated clef track to
-that part. Schema v1 and v2 remain readable and preserve their previous behavior.
-Manifest `source` paths are relative to the manifest file, even when it is
-generated in a different directory. Part IDs must be unique, non-empty filenames,
-not paths or dot-prefixed names; `_shared` is reserved. Generated files cannot
-escape the output directory, even with `--force`. A custom `output_name` must
-also be a non-empty filename without path separators or a leading dot.
-
-Report the semantic index of a music variable:
-
-```sh
-uv run python scripts/workbench.py index full-score.ly \
-  --variable violinMusic --output violin.index.json
-```
-
-Compare two scores by musical content rather than by text:
-
-```sh
-uv run python scripts/workbench.py diff before.ly after.ly \
-  --variable violinMusic --output violin.diff.json
-```
-
-`diff` walks both semantic indexes, so reformatting, comments, and a rewrite
-between relative and absolute pitch produce no differences, while an edited
-pitch, duration, onset, key, clef, dynamic, articulation, tempo, or repeat is reported
-with its measure, beat, and source location. Pass `--expect-measures 37-40` to
-fail when anything outside those measures changed, or `--fail-on-change` to
-require that the music is untouched. Use `--new-variable` when the variable was
-renamed.
-Moving a marker is also a musical change; its old and new measures must both be
-inside the allowed scope.
-
-Analyze harmony:
-
-```sh
-uv run python scripts/workbench.py analyze-harmony progression.ly \
-  --key C --output harmony.ily --report harmony.analysis.json
-```
-
-Build a document containing notation:
-
-```sh
-uv run python scripts/workbench.py build-document article.lytex \
-  --output-dir build/document
-```
-
-Add `--json` to any command that supports it when another program or agent step
-will consume the result.
-
-Every JSON command response uses a versioned envelope with `schema_version`,
-`ok`, `command`, `inputs`, `artifacts`, `diagnostics`, and `metadata`. Exit 0
-means success, exit 1 means the operation completed with failing findings or a
-tool failure, exit 2 means invalid input/configuration or a missing required
-tool, and exit 130 means interruption. `lint` reports have their own schema
-version under `metadata.report` and in the optional report file.
-
-## Command reference
+Run `uv run python scripts/workbench.py COMMAND`:
 
 | Command | Purpose |
 | --- | --- |
-| `doctor` | Check local executables and versions |
-| `new` | Copy a bundled score template |
-| `render` | Compile one `.ly` file |
+| `doctor` | Check tools and versions |
+| `new` | Create a score from a template |
+| `render` | Compile one score to PDF, PNG, SVG, or PostScript |
 | `batch-render` | Compile multiple scores, optionally in parallel |
-| `validate` | Check durations and run a no-page LilyPond compile |
-| `lint` | Check structure, ranges, clefs, transposition metadata, and part consistency |
-| `parse-log` | Convert LilyPond output into structured diagnostics |
-| `import-score` | Convert MusicXML, MIDI, or ABC to LilyPond |
-| `clean` | Normalize LilyPond version and formatting |
-| `parts-manifest` | Discover part candidates and create a reviewable manifest |
-| `extract-parts` | Generate part wrappers from a reviewed manifest |
-| `analyze-harmony` | Produce chord/Roman-numeral includes and an analysis report |
-| `analyze-clefs` | Recommend violin, viola, or cello clef changes from a semantic index |
-| `index` | Report the semantic index of one music variable |
-| `diff` | Compare two scores by musical content and locate every difference |
-| `build-document` | Run `lilypond-book` and LuaLaTeX |
+| `validate` | Check durations and compile without pages |
+| `lint` | Check structure, ranges, clefs, and part consistency |
+| `parse-log` | Turn compiler logs into structured diagnostics |
+| `import-score` | Import MusicXML/MXL, MIDI, or ABC |
+| `clean` | Normalize version and formatting |
+| `parts-manifest` | Discover parts and write a reviewable manifest |
+| `extract-parts` | Generate part wrappers and optional PDFs |
+| `analyze-harmony` | Infer chords, keys, and Roman numerals with confidence reports |
+| `analyze-clefs` | Recommend violin, viola, or cello clef changes |
+| `index` | Report one music variable's semantic index |
+| `diff` | Compare musical content and locate changes |
+| `build-document` | Publish notation with lilypond-book and LuaLaTeX |
 
-Run `uv run python scripts/workbench.py COMMAND --help` for all options.
+### Common workflows
 
-## Bundled templates
-
-`new` accepts these template names:
-
-- `single-staff`, `piano`, `lead-sheet`, `satb`
-- `string-quartet`, `orchestra`, `parts-project`
-- `guitar`, `ukulele`, `bass`, `drum-kit`, `annotations`
-
-Reusable house style lives in `assets/styles/house-style.ily`. The document
-starter is `assets/documents/article.lytex`.
-
-## Project layout
-
-```text
-.
-├── SKILL.md                 # Concise instructions loaded by Codex
-├── agents/openai.yaml       # Skill UI metadata
-├── assets/                  # Score and document templates
-├── references/              # Task-specific agent guidance
-├── scripts/
-│   ├── workbench.py         # CLI entry point
-│   └── lilypond_workbench/  # Deterministic implementation
-├── tests/                   # Unit and toolchain integration tests
-└── evals/evals.json         # Task scenarios mapped to regression tests
-```
-
-## Development
-
-Use uv for every dependency change and every Python invocation:
+Import and clean:
 
 ```sh
-uv add PACKAGE
-uv remove PACKAGE
-uv add --dev PACKAGE
-uv run pytest
+uv run python scripts/workbench.py import-score input.musicxml --output imported.ly
+uv run python scripts/workbench.py clean imported.ly --output imported-clean.ly
 ```
 
-Do not edit dependency lists in `pyproject.toml` or `uv.lock` by hand. Do not
-invoke `python`, `pytest`, or project scripts outside `uv run`.
-
-Run only the fast tests when the system toolchain is unavailable:
+Generate parts, reviewing names, transpositions, and `needs_review` entries first:
 
 ```sh
-uv run pytest -m "not integration"
+uv run python scripts/workbench.py parts-manifest full-score.ly --output parts.yaml
+uv run python scripts/workbench.py extract-parts parts.yaml --compile
 ```
 
-Run the complete integration surface on a machine with LilyPond and the LaTeX
-requirements installed:
+Check an edit's scope:
 
 ```sh
-uv run pytest
+uv run python scripts/workbench.py diff before.ly after.ly \
+  --variable violinMusic --expect-measures 37-40 --output changes.json
 ```
 
-Run the deterministic regression checks mapped to seven task scenarios with:
+`diff` ignores formatting and comments. Use `--fail-on-change` to require no
+musical changes, or `--new-variable` after renaming a variable. Moved events and
+markers are checked against both their old and new measures.
 
-```sh
-uv run python scripts/run_evals.py
-```
+Add `--json` for automation. Responses contain `schema_version`, `ok`, `command`,
+`inputs`, `artifacts`, `diagnostics`, and `metadata`.
+Exit codes: **0** success; **1** findings/tool failure; **2** invalid input,
+configuration, or missing tool; **130** interruption.
 
-This runner executes the scenarios' `pytest_nodes`, not their agent prompts.
-The prompts and `expected` fields describe broader task goals; passing these
-checks does not establish page limits, playability, agent editing quality, or
-every listed outcome. For example, the harmony scenario currently tests
-LilyPond input, not its requested MusicXML workflow.
+## Safety and limits
 
-For untrusted LilyPond input, build the isolated runner and keep generated
-outputs outside the source directory:
+**LilyPond sources can execute Guile/Scheme. Do not compile untrusted files
+directly on the host.** For supported commands, build the isolated runner and
+keep output outside the source directory:
 
 ```sh
 docker build -t localhost/lilypond-workbench:2.24.4 -f containers/Dockerfile .
@@ -300,45 +104,58 @@ uv run python scripts/workbench.py --runner container render score.ly \
   --output-dir /tmp/lilypond-output
 ```
 
-The bundled image supports Linux amd64 only. ARM hosts need amd64 emulation
-and `docker build --platform linux/amd64`; native ARM builds are not supported.
-The download is checked against a pinned SHA256 before extraction. If overriding
-the `LILYPOND_VERSION` build argument, also supply the independently verified
-`LILYPOND_SHA256` for that version's Linux x86_64 archive.
-The container runner supports only `render`, `batch-render`, `validate`, `lint`,
-and `analyze-harmony`, not every CLI command.
+- The image is **Linux amd64 only**. ARM hosts need amd64 emulation and
+  `docker build --platform linux/amd64`. Overriding `LILYPOND_VERSION` also requires
+  the verified `LILYPOND_SHA256`; downloads are checked before extraction.
+- Container mode supports only `render`, `batch-render`, `validate`, `lint`, and
+  `analyze-harmony`. It is not a sandbox for every CLI command.
+- `--force` and `--in-place` overwrite files. Review targets before using them.
+- Imports are drafts. Harmony analysis targets common-practice, pop, and jazz in
+  12-tone equal temperament; low-confidence chords stay in JSON, not the generated
+  include. `--score-index` selects only non-nested scores declared in the input
+  file; ambiguous MIDI output is rejected.
+- Parts need review before compilation. Manifests use schema v3 (v1/v2 remain
+  readable), with `source` relative to the manifest. IDs and `output_name` must be
+  safe filenames; IDs must be unique and `_shared` is reserved. Invalid range or
+  transpose settings are configuration errors, not suppressible findings.
+- Static duration checks defer includes and `\cadenzaOn` to compiler validation.
+  A successful static check alone does not prove that a score is correct.
+- `index` and `diff` inspect **one variable at a time**, using written pitches.
+  Transposed accidentals are not respelled. A `\repeat` directly after `\tempo`
+  triggers a parser-limit warning. Literal-duration `\after` dynamics/articulations
+  and default `\afterGrace` are supported; other `\after` forms, explicit
+  afterGrace fractions, and `afterGraceFraction` overrides are rejected.
+- Clef recommendations never edit the source; explicit clefs remain authoritative.
 
-The full suite compiles every bundled score template and exercises imports,
-batch rendering, error detection, part extraction, harmonic analysis, and
-LaTeX document generation.
+## Guides and templates
 
-## Important behavior and limitations
+Task guides: [comparison](references/comparison.md), [diagnostics](references/diagnostics.md),
+[imports](references/imports.md), [parts](references/parts.md),
+[clefs and ranges](references/instruments.md), [harmony](references/harmony.md),
+[annotations](references/annotations.md), [engraving](references/engraving.md),
+[linting](references/linting.md), and [LaTeX](references/latex.md).
 
-- Converter output is always a draft. MusicXML layout, MIDI quantization and
-  enharmonic spelling, and ABC dialect details require musical review.
-- Harmonic analysis targets common-practice, pop, and jazz harmony in
-  12-tone equal temperament. Low-confidence events are omitted from the
-  LilyPond include and retained in JSON for review.
-  For LilyPond input, `--score-index` selects a score in the source file itself.
-  Selecting a score nested inside another score is unsupported, and scores
-  hidden in includes are not selectable; if compilation still produces
-  multiple MIDI files, analysis stops rather than guessing which one to use.
-- Part extraction deliberately stops when the shared source cannot be isolated
-  safely; review the manifest before compiling parts.
-- Invalid manifest range overrides or transpose pitches are configuration errors
-  (exit 2), not suppressible lint findings. Practical violin and viola ranges
-  follow the G3–D7 and C3–E6 boundaries in `references/instruments.md`.
-- `index` and `diff` cover one music variable at a time and read written
-  pitches. Transposed passages keep their written accidentals rather than being
-  respelled, and a `\repeat` that directly follows a `\tempo` mark cannot be
-  parsed by python-ly; that case is reported as a warning instead of being
-  silently omitted.
-  Default `\afterGrace` positioning is supported, but explicit fractions and
-  `afterGraceFraction` overrides are rejected by the static index rather than
-  silently assigned the wrong time.
-- Automatic clef tracks never edit the score source. Existing explicit clefs
-  are preserved, and reports should be reviewed before publication.
-- LilyPond input can contain Guile/Scheme and must be treated as executable
-  code. Compile untrusted sources only in an appropriately isolated environment.
-- `--force` and `--in-place` overwrite files. Confirm the intended target
-  before using either option.
+Templates for `new`: `single-staff`, `piano`, `lead-sheet`, `satb`,
+`string-quartet`, `orchestra`, `parts-project`, `guitar`, `ukulele`, `bass`,
+`drum-kit`, and `annotations`. House style: `assets/styles/house-style.ily`;
+document starter: `assets/documents/article.lytex`.
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Use `uv add`, `uv remove`, or `uv add --dev`
+for dependency changes; do not hand-edit dependency lists or `uv.lock`.
+
+```sh
+uv run pytest -m "not integration"          # Fast tests; no system toolchain needed
+uv run pytest                               # Full suite; LilyPond + LaTeX required
+uv run python scripts/validate_skill.py .
+uv run python scripts/run_evals.py           # All eight regression scenarios
+uv run python scripts/run_evals.py --id 8    # Timing/diagnostic regressions
+```
+
+Evals run mapped pytest tests, **not agent prompts**. Passing them does not verify
+every stated task goal, page count, playability, or agent editing quality.
+
+Project map: `scripts/lilypond_workbench/` contains the CLI implementation,
+`tests/` holds tests and fixtures, `evals/evals.json` maps regression scenarios,
+and `references/` holds task-specific guidance.

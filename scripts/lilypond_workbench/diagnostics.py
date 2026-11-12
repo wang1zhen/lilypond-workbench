@@ -16,7 +16,9 @@ def _classify(message: str, severity: str) -> tuple[str, str | None]:
         return "BAR_DURATION", "Check note and rest durations against the active time signature."
     if "syntax error" in lower or "unexpected" in lower:
         return "SYNTAX_ERROR", "Inspect braces, << >>, slurs, ties, and the preceding line."
-    if "cannot find file" in lower or "failed files" in lower:
+    if "program too old" in lower or "file requires" in lower:
+        return "VERSION_MISMATCH", "Compile with the LilyPond version named in the \\version statement, or lower the declared version."
+    if "cannot find file" in lower:
         return "INCLUDE_NOT_FOUND", "Correct the include path relative to the compiled source."
     if "unknown escaped string" in lower:
         return "UNKNOWN_COMMAND", "Check the LilyPond command spelling and version compatibility."

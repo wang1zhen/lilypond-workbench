@@ -204,11 +204,40 @@ def _duration(denominator: int, dots: int, multiplier: Fraction = Fraction(1)) -
     return value * multiplier
 
 
+def _bar_remainder(accumulated: Fraction, meter: Fraction, partial: Fraction | None, bar: int) -> Fraction:
+    if partial is not None and bar == 1:
+        return (accumulated - partial) % meter
+    return accumulated % meter
+
+
 def check_measure_durations(text: str, *, file_name: str | None = None) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
+    masked_text = masked_source(text)
+    include_match = re.search(r'\\include\b', masked_text)
+    if include_match is not None:
+        return [
+            Diagnostic(
+                "info",
+                "DURATION_PARTIAL_ANALYSIS",
+                "Includes may change meter or free-meter context; bar durations require compiler validation",
+                file=file_name,
+                line=masked_text.count("\n", 0, include_match.start()) + 1,
+            )
+        ]
+    cadenza_match = re.search(r"\\cadenzaOn\b", masked_text)
+    if cadenza_match is not None:
+        return [
+            Diagnostic(
+                "info",
+                "DURATION_PARTIAL_ANALYSIS",
+                "Free meter (\\cadenzaOn) requires compiler validation",
+                file=file_name,
+                line=masked_text.count("\n", 0, cadenza_match.start()) + 1,
+            )
+        ]
     variables = extract_music_variables(text)
     if not variables:
-        variables = [MusicVariable("document", 0, 0, len(text) - 1, 1)]
+        variables = [MusicVariable("document", 0, -1, len(text), 1)]
     global_meter = Fraction(1, 1)
     global_partial: Fraction | None = None
     global_variable = next((item for item in variables if item.name == "global"), None)
@@ -248,6 +277,16 @@ def check_measure_durations(text: str, *, file_name: str | None = None) -> list[
                 )
             )
             continue
+        masked = re.sub(
+            r"\\(?:relative|fixed)\s+[a-g](?:is|es|isis|eses)?[,']*",
+            " ",
+            masked,
+        )
+        masked = re.sub(
+            r"\\transpose\s+[a-g](?:is|es|isis|eses)?[,']*\s+[a-g](?:is|es|isis|eses)?[,']*",
+            " ",
+            masked,
+        )
         masked = re.sub(
             r"\\(?:key|transposition)\s+[a-g](?:is|es|isis|eses)?[,']*(?:\s+\\(?:major|minor))?",
             " ",
@@ -292,33 +331,42 @@ def check_measure_durations(text: str, *, file_name: str | None = None) -> list[
                 )
                 accumulated += _duration(inherited, len(note.group("dots") or ""), multiplier) * scale_stack[-1]
             elif kind == "bar" and accumulated:
-                expected = partial if partial is not None and bar == 1 else meter
-                if accumulated != expected:
+                remainder = _bar_remainder(accumulated, meter, partial, bar)
+                if remainder:
                     line = variable.line + body[: token.start()].count("\n")
                     diagnostics.append(
                         Diagnostic(
                             "warning",
                             "BAR_DURATION",
-                            f"{variable.name} bar {bar}: expected {expected}, got {accumulated} whole notes",
+                            f"{variable.name} bar-separated segment {bar}: {accumulated} whole notes do not fit meter {meter}",
                             file=file_name,
                             line=line,
                             suggestion="Verify inherited durations, rests, tuplets, and the active time signature.",
-                            details={"variable": variable.name, "bar": bar, "expected": str(expected), "actual": str(accumulated)},
+                            details={
+                                "variable": variable.name,
+                                "bar": bar,
+                                "expected": str(meter),
+                                "actual": str(accumulated),
+                                "remainder": str(remainder),
+                            },
                         )
                     )
                 accumulated = Fraction(0)
                 partial = None
                 bar += 1
-        if accumulated and accumulated != meter:
-            diagnostics.append(
-                Diagnostic(
-                    "warning",
-                    "FINAL_BAR_DURATION",
-                    f"{variable.name} final bar: expected {meter}, got {accumulated} whole notes",
-                    file=file_name,
-                    line=variable.line + body.count("\n"),
-                    suggestion="Check whether this is an intentional cadenza or incomplete final measure.",
-                    details={"variable": variable.name, "bar": bar, "expected": str(meter), "actual": str(accumulated)},
+        if accumulated:
+            remainder = _bar_remainder(accumulated, meter, partial, bar)
+            if remainder:
+                line = variable.line + body.count("\n")
+                diagnostics.append(
+                    Diagnostic(
+                        "warning",
+                        "FINAL_BAR_DURATION",
+                        f"{variable.name} final bar: expected {meter}, got {remainder} whole notes remaining",
+                        file=file_name,
+                        line=line,
+                        suggestion="Check whether this is an intentional cadenza or incomplete final measure.",
+                        details={"variable": variable.name, "bar": bar, "expected": str(meter), "actual": str(remainder)},
+                    )
                 )
-            )
     return diagnostics

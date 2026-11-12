@@ -13,7 +13,7 @@ from .common import Diagnostic, Result, WorkbenchError, atomic_write, prepare_ou
 from .parts import normalize_manifest
 from .rendering import validate_file
 from .semantic import SemanticIndex, build_semantic_index
-from .syntax import extract_music_variables
+from .syntax import extract_music_variables, masked_source
 
 
 _INCLUDE_RE = re.compile(r'\\include\s+"([^"\n]+)"')
@@ -133,7 +133,9 @@ def _structural_diagnostics(source: Path) -> list[Diagnostic]:
         variables = extract_music_variables(text)
     except WorkbenchError as exc:
         return [_diag("structure.unmatched-delimiter", "error", str(exc), file=str(source))]
-    if not variables:
+    masked = masked_source(text)
+    has_music_entry = bool(re.search(r"\\(?:score|book|bookpart)\b", masked) or re.search(r"\\include\b", masked))
+    if not variables and not has_music_entry:
         diagnostics.append(_diag("structure.no-music-variable", "warning", "No top-level music variables were found", file=str(source)))
     seen: dict[str, int] = {}
     for variable in variables:
@@ -149,6 +151,8 @@ def _structural_diagnostics(source: Path) -> list[Diagnostic]:
             )
         seen[variable.name] = variable.line
     for match in _INCLUDE_RE.finditer(text):
+        if masked[match.start()] != "\\":
+            continue  # comment or string
         included = (source.parent / match.group(1)).resolve()
         if not included.is_file():
             diagnostics.append(
@@ -230,10 +234,6 @@ def _range_diagnostics(index: SemanticIndex, part: dict[str, Any]) -> list[Diagn
 def _manifest_diagnostics(source: Path, manifest: dict[str, Any]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     source_text = source.read_text(encoding="utf-8")
-    try:
-        variables = {item.name for item in extract_music_variables(source_text)}
-    except WorkbenchError as exc:
-        return [_diag("structure.unmatched-delimiter", "error", str(exc), file=str(source))]
     declared_tags = set(re.findall(r"\\tag\s+#?'?([A-Za-z][A-Za-z0-9_-]*)", source_text))
     ids: set[str] = set()
     outputs: set[str] = set()
@@ -257,17 +257,6 @@ def _manifest_diagnostics(source: Path, manifest: dict[str, Any]) -> list[Diagno
                         details={"part": part_id, "tag": tag},
                     )
                 )
-        if part["variable"] not in variables:
-            diagnostics.append(
-                _diag(
-                    "parts.variable-not-found",
-                    "error",
-                    f"Part {part_id} references missing variable {part['variable']}",
-                    file=str(source),
-                    details={"part": part_id},
-                )
-            )
-            continue
         try:
             index = build_semantic_index(source, str(part["variable"]))
             for raw_diagnostic in index.diagnostics:
@@ -288,6 +277,17 @@ def _manifest_diagnostics(source: Path, manifest: dict[str, Any]) -> list[Diagno
         except WorkbenchError as exc:
             if exc.code == "MANIFEST_SCHEMA":
                 raise  # Invalid manifest values are config errors (exit 2), not suppressible findings.
+            if exc.code == "VARIABLE_NOT_FOUND":
+                diagnostics.append(
+                    _diag(
+                        "parts.variable-not-found",
+                        "error",
+                        f"Part {part_id} references missing variable {part['variable']}",
+                        file=str(source),
+                        details={"part": part_id},
+                    )
+                )
+                continue
             diagnostics.append(_diag("semantic.index-failed", "error", str(exc), file=str(source), details={"part": part_id}))
     return diagnostics
 
